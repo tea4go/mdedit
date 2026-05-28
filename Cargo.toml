@@ -1,0 +1,18 @@
+[package]
+name = "mdedit"
+version = "0.1.0"
+edition = "2021"
+description = "A lightweight cross-platform Markdown editor with WYSIWYG rendering"
+license = "MIT"
+
+[dependencies]
+eframe = "0.29"
+egui = "0.29"
+pulldown-cmark = "0.12"
+syntect = { version = "5.2", default-features = false, features = ["default-fancy"] }
+rfd = "0.15"
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true

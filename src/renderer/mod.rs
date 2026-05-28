@@ -1,6 +1,7 @@
 mod blocks;
 mod inline;
 
+#[allow(unused_imports)]
 pub use blocks::render_block;
 
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
@@ -29,7 +30,7 @@ pub fn parse_blocks(content: &str) -> Vec<Block> {
     let mut code_content = String::new();
     let mut in_quote = false;
     let mut quote_text = String::new();
-    let mut in_list = false;
+    let mut _in_list = false;
     let mut list_ordered = false;
     let mut list_items: Vec<String> = Vec::new();
     let mut current_item = String::new();
@@ -93,12 +94,12 @@ pub fn parse_blocks(content: &str) -> Vec<Block> {
                 });
             }
             Event::Start(Tag::List(first_item)) => {
-                in_list = true;
+                _in_list = true;
                 list_ordered = first_item.is_some();
                 list_items.clear();
             }
             Event::End(TagEnd::List(_)) => {
-                in_list = false;
+                _in_list = false;
                 blocks.push(Block::List {
                     ordered: list_ordered,
                     items: list_items.clone(),

@@ -2,7 +2,6 @@ use eframe::egui;
 use crate::document::Document;
 use crate::editor::Editor;
 use crate::outline::{self, OutlineItem};
-use crate::renderer;
 use crate::theme::Theme;
 
 pub struct MdEditApp {

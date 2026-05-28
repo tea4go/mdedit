@@ -16,6 +16,7 @@ pub enum BlockKind {
     CodeBlock(String),
     Quote,
     List(bool),
+    Table,
     Rule,
     Empty,
 }
@@ -101,6 +102,20 @@ pub fn split_blocks(content: &str) -> Vec<TextBlock> {
                 source,
                 kind: BlockKind::List(ordered),
             });
+        } else if line.contains('|') && i + 1 < lines.len()
+            && is_table_separator(lines[i + 1])
+        {
+            let start = i;
+            while i < lines.len() && lines[i].contains('|') {
+                i += 1;
+            }
+            let source = lines[start..i].join("\n");
+            blocks.push(TextBlock {
+                start_line: start,
+                end_line: i - 1,
+                source,
+                kind: BlockKind::Table,
+            });
         } else if line == "---" || line == "***" || line == "___" {
             blocks.push(TextBlock {
                 start_line: i,
@@ -131,6 +146,14 @@ pub fn split_blocks(content: &str) -> Vec<TextBlock> {
         }
     }
     blocks
+}
+
+fn is_table_separator(line: &str) -> bool {
+    let trimmed = line.trim();
+    if !trimmed.contains('|') {
+        return false;
+    }
+    trimmed.chars().all(|c| c == '|' || c == '-' || c == ':' || c == ' ')
 }
 
 pub fn render_rich_block(ui: &mut egui::Ui, block: &TextBlock, theme: &Theme) {
@@ -200,6 +223,37 @@ pub fn render_rich_block(ui: &mut egui::Ui, block: &TextBlock, theme: &Theme) {
                     ui.label(&marker);
                     ui.label(text);
                 });
+            }
+        }
+        BlockKind::Table => {
+            let rows: Vec<Vec<&str>> = block.source.lines()
+                .filter(|l| !is_table_separator(l))
+                .map(|l| {
+                    l.trim().trim_matches('|')
+                        .split('|')
+                        .map(|cell| cell.trim())
+                        .collect()
+                })
+                .collect();
+
+            if !rows.is_empty() {
+                let col_count = rows[0].len();
+                egui::Grid::new(format!("table_{}", block.start_line))
+                    .striped(true)
+                    .min_col_width(60.0)
+                    .show(ui, |ui| {
+                        for (row_idx, row) in rows.iter().enumerate() {
+                            for col_idx in 0..col_count {
+                                let cell = row.get(col_idx).unwrap_or(&"");
+                                if row_idx == 0 {
+                                    ui.label(egui::RichText::new(*cell).strong());
+                                } else {
+                                    ui.label(*cell);
+                                }
+                            }
+                            ui.end_row();
+                        }
+                    });
             }
         }
         BlockKind::Rule => {

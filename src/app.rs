@@ -14,7 +14,8 @@ pub struct MdEditApp {
 }
 
 impl MdEditApp {
-    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        Self::configure_fonts(&cc.egui_ctx);
         Self {
             document: Document::new(),
             editor: Editor::new(),
@@ -23,6 +24,47 @@ impl MdEditApp {
             theme: Theme::default(),
             scroll_to_line: None,
         }
+    }
+
+    fn configure_fonts(ctx: &egui::Context) {
+        let mut fonts = egui::FontDefinitions::default();
+
+        let font_paths = if cfg!(target_os = "windows") {
+            vec![
+                "C:\\Windows\\Fonts\\msyh.ttc",
+                "C:\\Windows\\Fonts\\simsun.ttc",
+            ]
+        } else if cfg!(target_os = "macos") {
+            vec![
+                "/System/Library/Fonts/PingFang.ttc",
+                "/System/Library/Fonts/STHeiti Light.ttc",
+            ]
+        } else {
+            vec![
+                "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+                "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            ]
+        };
+
+        for path in font_paths {
+            if let Ok(font_data) = std::fs::read(path) {
+                fonts.font_data.insert(
+                    "cjk_font".to_owned(),
+                    egui::FontData::from_owned(font_data).into(),
+                );
+                fonts.families
+                    .get_mut(&egui::FontFamily::Proportional)
+                    .unwrap()
+                    .push("cjk_font".to_owned());
+                fonts.families
+                    .get_mut(&egui::FontFamily::Monospace)
+                    .unwrap()
+                    .push("cjk_font".to_owned());
+                break;
+            }
+        }
+
+        ctx.set_fonts(fonts);
     }
 
     fn update_outline(&mut self) {

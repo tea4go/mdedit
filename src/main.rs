@@ -33,6 +33,7 @@ fn load_initial_file() -> Option<(PathBuf, String)> {
 }
 
 fn main() -> eframe::Result<()> {
+    let initial_file = load_initial_file();
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1200.0, 800.0])
@@ -43,6 +44,6 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "mdedit",
         options,
-        Box::new(|cc| Ok(Box::new(app::MdEditApp::new(cc)))),
+        Box::new(move |cc| Ok(Box::new(app::MdEditApp::new(cc, initial_file)))),
     )
 }

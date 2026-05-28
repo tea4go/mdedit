@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use eframe::egui;
 use crate::document::Document;
 use crate::editor::{self, TextBlock};
@@ -15,11 +17,23 @@ pub struct MdEditApp {
 }
 
 impl MdEditApp {
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(
+        cc: &eframe::CreationContext<'_>,
+        initial_file: Option<(PathBuf, String)>,
+    ) -> Self {
         Self::configure_fonts(&cc.egui_ctx);
+
+        let (document, outline_items) = if let Some((path, content)) = initial_file {
+            let document = Document::from_file(path, content);
+            let outline_items = outline::extract_outline(document.content());
+            (document, outline_items)
+        } else {
+            (Document::new(), Vec::new())
+        };
+
         Self {
-            document: Document::new(),
-            outline_items: Vec::new(),
+            document,
+            outline_items,
             show_outline: true,
             theme: Theme::default(),
             scroll_to_line: None,

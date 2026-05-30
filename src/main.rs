@@ -138,8 +138,8 @@ fn main() -> eframe::Result<()> {
     if let (Some(x), Some(y)) = (cfg.window_x, cfg.window_y) {
         if is_position_visible(x, y, w, h) {
             log_startup(&format!(
-                "applying with_position({}, {}), with_inner_size({}, {})",
-                x, y, w, h
+                "applying with_position({}, {}), scale={}",
+                x, y, scale
             ));
             viewport = viewport.with_position([x, y]);
         } else {

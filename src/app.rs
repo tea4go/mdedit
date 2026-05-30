@@ -7,14 +7,21 @@ use crate::editor::{self, TextBlock};
 use crate::outline::{self, OutlineItem};
 use crate::theme::Theme;
 
-const CSS_THEME_PATH: &str =
-    r"C:\Users\tony\AppData\Roaming\WhaleTerm\mynotes\files\markdown-theme\light.css";
+const CSS_THEME_DIR: &str =
+    r"C:\Users\tony\AppData\Roaming\WhaleTerm\mynotes\files\markdown-theme";
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum ThemeMode {
+    Light,
+    Dark,
+}
 
 pub struct MdEditApp {
     document: Document,
     outline_items: Vec<OutlineItem>,
     show_outline: bool,
     theme: Theme,
+    theme_mode: ThemeMode,
     scroll_to_line: Option<usize>,
     active_block: Option<usize>,
     editing_text: String,
@@ -35,14 +42,15 @@ impl MdEditApp {
             (Document::new(), Vec::new())
         };
 
-        let theme = css_loader::load_theme_from_css(Path::new(CSS_THEME_PATH))
-            .unwrap_or_default();
+        let theme_mode = ThemeMode::Light;
+        let theme = Self::load_css_theme(theme_mode);
 
         Self {
             document,
             outline_items,
             show_outline: true,
             theme,
+            theme_mode,
             scroll_to_line: None,
             active_block: None,
             editing_text: String::new(),
@@ -88,6 +96,25 @@ impl MdEditApp {
         }
 
         ctx.set_fonts(fonts);
+    }
+
+    fn load_css_theme(mode: ThemeMode) -> Theme {
+        let filename = match mode {
+            ThemeMode::Light => "light.css",
+            ThemeMode::Dark => "dark.css",
+        };
+        let path = Path::new(CSS_THEME_DIR).join(filename);
+        css_loader::load_theme_from_css(&path).unwrap_or_else(|| {
+            match mode {
+                ThemeMode::Light => Theme::light(),
+                ThemeMode::Dark => Theme::dark(),
+            }
+        })
+    }
+
+    fn switch_theme(&mut self, mode: ThemeMode) {
+        self.theme_mode = mode;
+        self.theme = Self::load_css_theme(mode);
     }
 
     fn update_outline(&mut self) {
@@ -218,6 +245,15 @@ impl eframe::App for MdEditApp {
                 });
                 ui.menu_button("视图", |ui| {
                     if ui.checkbox(&mut self.show_outline, "大纲面板").clicked() {
+                        ui.close_menu();
+                    }
+                    ui.separator();
+                    ui.label("主题");
+                    let prev_mode = self.theme_mode;
+                    ui.radio_value(&mut self.theme_mode, ThemeMode::Light, "浅色");
+                    ui.radio_value(&mut self.theme_mode, ThemeMode::Dark, "深色");
+                    if self.theme_mode != prev_mode {
+                        self.switch_theme(self.theme_mode);
                         ui.close_menu();
                     }
                 });

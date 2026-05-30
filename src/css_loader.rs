@@ -7,7 +7,42 @@ use crate::theme::Theme;
 pub fn load_theme_from_css(path: &Path) -> Option<Theme> {
     let content = std::fs::read_to_string(path).ok()?;
     let rules = parse_css(&content);
-    Some(apply_css_to_theme(rules))
+    let theme = apply_css_to_theme(rules);
+    Some(theme)
+}
+
+pub fn debug_theme(theme: &Theme) -> String {
+    format!(
+        "Theme loaded:\n\
+         base.background: {:?}\n\
+         base.text: {:?}\n\
+         font.line_height: {}\n\
+         heading.separator[0]: {:?}\n\
+         heading.separator[1]: {:?}\n\
+         code.inline_rounding: {}\n\
+         code.block_bg: {:?}\n\
+         code.block_text: {:?}\n\
+         code.block_padding: {}\n\
+         quote.bar_color: {:?}\n\
+         rule.color: {:?}\n\
+         link.color: {:?}\n\
+         table.header_text: {:?}\n\
+         table.cell_padding: {}",
+        theme.base.background,
+        theme.base.text,
+        theme.font.line_height,
+        theme.heading.separator_colors[0],
+        theme.heading.separator_colors[1],
+        theme.code.inline_rounding,
+        theme.code.block_bg,
+        theme.code.block_text,
+        theme.code.block_padding,
+        theme.quote.bar_color,
+        theme.rule.color,
+        theme.link.color,
+        theme.table.header_text,
+        theme.table.cell_padding,
+    )
 }
 
 struct CssRule {
@@ -77,6 +112,8 @@ fn read_until(chars: &mut std::iter::Peekable<std::str::Chars>, end: char) -> St
 
 fn parse_properties(body: &str) -> HashMap<String, String> {
     let mut props = HashMap::new();
+    // 先去掉注释
+    let body = remove_comments(body);
     for decl in body.split(';') {
         let decl = decl.trim();
         if decl.is_empty() { continue; }
@@ -84,10 +121,35 @@ fn parse_properties(body: &str) -> HashMap<String, String> {
             let key = key.trim().to_lowercase();
             let val = val.trim()
                 .replace("!important", "").trim().to_string();
-            props.insert(key, val);
+            if !key.is_empty() {
+                props.insert(key, val);
+            }
         }
     }
     props
+}
+
+fn remove_comments(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '/' && chars.peek() == Some(&'*') {
+            chars.next();
+            loop {
+                match chars.next() {
+                    Some('*') if chars.peek() == Some(&'/') => {
+                        chars.next();
+                        break;
+                    }
+                    None => break,
+                    _ => {}
+                }
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
 }
 
 fn parse_color(val: &str) -> Option<Color32> {
@@ -161,8 +223,14 @@ fn find_rule<'a>(
     rules: &'a HashMap<String, CssRule>,
     needle: &str,
 ) -> Option<&'a CssRule> {
+    // 先尝试精确匹配
+    if let Some(rule) = rules.get(needle) {
+        return Some(rule);
+    }
+    // 回退：找包含 needle 的最短选择器（最精确）
     rules.iter()
-        .find(|(k, _)| k.contains(needle))
+        .filter(|(k, _)| k.contains(needle))
+        .min_by_key(|(k, _)| k.len())
         .map(|(_, v)| v)
 }
 

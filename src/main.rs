@@ -11,7 +11,10 @@ mod theme;
 use eframe::egui;
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+const CSS_THEME_DIR: &str =
+    r"C:\Users\tony\AppData\Roaming\WhaleTerm\mynotes\files\markdown-theme";
 
 fn load_initial_file() -> Option<(PathBuf, String)> {
     let args: Vec<String> = env::args().collect();
@@ -34,6 +37,21 @@ fn load_initial_file() -> Option<(PathBuf, String)> {
 }
 
 fn main() -> eframe::Result<()> {
+    // 调试：输出 CSS 主题解析结果
+    if env::args().any(|a| a == "--debug-theme") {
+        let name = env::args()
+            .skip_while(|a| a != "--debug-theme")
+            .nth(1)
+            .unwrap_or_else(|| "light".to_string());
+        let path = Path::new(CSS_THEME_DIR).join(format!("{}.css", name));
+        if let Some(theme) = css_loader::load_theme_from_css(&path) {
+            println!("{}", css_loader::debug_theme(&theme));
+        } else {
+            println!("Failed to load CSS theme from: {}", path.display());
+        }
+        return Ok(());
+    }
+
     let initial_file = load_initial_file();
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()

@@ -212,3 +212,16 @@ impl Default for Theme {
         Self::light()
     }
 }
+
+pub struct UiTheme {
+    pub menu_bg: Color32,
+    pub menu_text: Color32,
+    pub sidebar_bg: Color32,
+    pub sidebar_text: Color32,
+    pub sidebar_hover_bg: Color32,
+    pub sidebar_active_bg: Color32,
+    pub sidebar_active_text: Color32,
+    pub content_bg: Color32,
+    pub border: Color32,
+    pub divider: Color32,
+}

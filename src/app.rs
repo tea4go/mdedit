@@ -6,7 +6,7 @@ use crate::css_loader;
 use crate::document::Document;
 use crate::editor::{self, TextBlock};
 use crate::outline::{self, OutlineItem};
-use crate::theme::Theme;
+use crate::theme::{Theme, UiTheme};
 
 const CSS_THEME_DIR: &str =
     r"C:\Users\tony\AppData\Roaming\WhaleTerm\mynotes\files\markdown-theme";
@@ -161,12 +161,109 @@ fn load_config_font_config() -> ConfigFontConfig {
     ConfigFontConfig { family, size, bold }
 }
 
+fn parse_hex_color(val: &str) -> Option<egui::Color32> {
+    let hex = val.trim().strip_prefix('#')?;
+    match hex.len() {
+        3 => {
+            let r = u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?;
+            let g = u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?;
+            let b = u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()?;
+            Some(egui::Color32::from_rgb(r, g, b))
+        }
+        6 => {
+            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+            Some(egui::Color32::from_rgb(r, g, b))
+        }
+        _ => None,
+    }
+}
+
+fn load_ui_theme(mode: ThemeMode) -> UiTheme {
+    let path = PathBuf::from(r"C:\Users\tony\AppData\Roaming\WhaleTerm\preferences.json");
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return UiTheme::default_for(mode),
+    };
+    let root: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(v) => v,
+        Err(_) => return UiTheme::default_for(mode),
+    };
+    let key = match mode {
+        ThemeMode::Light => "themeLight",
+        ThemeMode::Dark => "themeDark",
+    };
+    let theme_obj = match root.get(key) {
+        Some(t) => t,
+        None => return UiTheme::default_for(mode),
+    };
+
+    let get = |field: &str| -> egui::Color32 {
+        theme_obj.get(field)
+            .and_then(|v| v.as_str())
+            .and_then(parse_hex_color)
+            .unwrap_or(egui::Color32::GRAY)
+    };
+
+    UiTheme {
+        menu_bg: get("appBgColor"),
+        menu_text: get("appHeaderTextColor"),
+        sidebar_bg: get("appSiderBarBgColor"),
+        sidebar_text: get("appSideTextColor"),
+        sidebar_hover_bg: get("appSideHoverBgColor"),
+        sidebar_active_bg: get("appLeftListBgColorActive"),
+        sidebar_active_text: get("appLeftListTextColorActive"),
+        content_bg: get("appContentNoteBgColor"),
+        border: get("borderColor"),
+        divider: get("appDividerColor"),
+    }
+}
+
+impl Default for UiTheme {
+    fn default() -> Self {
+        Self::default_for(ThemeMode::Light)
+    }
+}
+
+impl UiTheme {
+    fn default_for(mode: ThemeMode) -> Self {
+        match mode {
+            ThemeMode::Light => UiTheme {
+                menu_bg: egui::Color32::from_rgb(0x5A, 0xB9, 0xC1),
+                menu_text: egui::Color32::from_rgb(0x3D, 0x3D, 0x3D),
+                sidebar_bg: egui::Color32::from_rgb(0xCB, 0xEC, 0xEF),
+                sidebar_text: egui::Color32::from_rgb(0x58, 0x5A, 0x60),
+                sidebar_hover_bg: egui::Color32::from_rgb(0xAA, 0xDB, 0xDF),
+                sidebar_active_bg: egui::Color32::from_rgb(0x5A, 0xB9, 0xC1),
+                sidebar_active_text: egui::Color32::WHITE,
+                content_bg: egui::Color32::WHITE,
+                border: egui::Color32::from_rgb(0x97, 0xBE, 0xC0),
+                divider: egui::Color32::from_rgb(0x9F, 0xD7, 0xDC),
+            },
+            ThemeMode::Dark => UiTheme {
+                menu_bg: egui::Color32::from_rgb(0x01, 0x40, 0x51),
+                menu_text: egui::Color32::from_rgb(0xCC, 0xCC, 0xCC),
+                sidebar_bg: egui::Color32::from_rgb(0x01, 0x40, 0x51),
+                sidebar_text: egui::Color32::from_rgb(0xCC, 0xCC, 0xCC),
+                sidebar_hover_bg: egui::Color32::from_rgb(0x00, 0x5A, 0x6F),
+                sidebar_active_bg: egui::Color32::from_rgb(0x00, 0x5A, 0x6F),
+                sidebar_active_text: egui::Color32::from_rgb(0xCC, 0xCC, 0xCC),
+                content_bg: egui::Color32::from_rgb(0x00, 0x2C, 0x37),
+                border: egui::Color32::from_rgb(0x1A, 0x77, 0x78),
+                divider: egui::Color32::from_rgb(0x19, 0x57, 0x55),
+            },
+        }
+    }
+}
+
 pub struct MdEditApp {
     document: Document,
     outline_items: Vec<OutlineItem>,
     show_outline: bool,
     theme: Theme,
     theme_mode: ThemeMode,
+    ui_theme: UiTheme,
     edit_mode: EditMode,
     ui_font_size: f32,
     ui_font_bold: bool,
@@ -206,7 +303,8 @@ impl MdEditApp {
         };
         let mut theme = Self::load_css_theme(theme_mode);
         theme.font.base_size = note_font.size;
-        theme.font.monospace_size = note_font.size - 2.0;
+        theme.font.monospace_size = note_font.size;
+        let ui_theme = load_ui_theme(theme_mode);
 
         // 设置 egui visuals 匹配主题
         match theme_mode {
@@ -226,6 +324,7 @@ impl MdEditApp {
             show_outline: true,
             theme,
             theme_mode,
+            ui_theme,
             edit_mode,
             ui_font_size: config_font.size,
             ui_font_bold: config_font.bold,
@@ -258,26 +357,17 @@ impl MdEditApp {
             }
         }
 
-        // 加载 config 字体（UI 菜单栏等使用）
+        // 加载 config 字体（UI 菜单栏等使用），加入 Proportional 族作为备选
         for family_name in &config_font.family {
             if let Some(font_data) = find_font_data(family_name) {
                 fonts.font_data.insert(
                     "ui_font".to_owned(),
                     egui::FontData::from_owned(font_data).into(),
                 );
-                // 注册自定义 FontFamily 用于 UI，包含 fallback 字体
-                let mut ui_list = vec!["ui_font".to_owned()];
-                if let Some(prop_list) = fonts.families.get(&egui::FontFamily::Proportional) {
-                    for f in prop_list {
-                        if !ui_list.contains(f) {
-                            ui_list.push(f.clone());
-                        }
-                    }
-                }
-                fonts.families.insert(
-                    egui::FontFamily::Name("ui".into()),
-                    ui_list,
-                );
+                fonts.families
+                    .get_mut(&egui::FontFamily::Proportional)
+                    .unwrap()
+                    .push("ui_font".to_owned());
                 break;
             }
         }
@@ -340,6 +430,7 @@ impl MdEditApp {
     fn switch_theme(&mut self, mode: ThemeMode) {
         self.theme_mode = mode;
         self.theme = Self::load_css_theme(mode);
+        self.ui_theme = load_ui_theme(mode);
     }
 
     fn update_outline(&mut self) {
@@ -456,7 +547,6 @@ impl eframe::App for MdEditApp {
 
             // 设置 UI 字体样式（菜单栏、按钮等）
             {
-                let ui_family = egui::FontFamily::Name("ui".into());
                 let mut style = (*ctx.style()).clone();
                 for (key, size) in [
                     (egui::TextStyle::Body, self.ui_font_size),
@@ -465,7 +555,6 @@ impl eframe::App for MdEditApp {
                 ] {
                     if let Some(entry) = style.text_styles.get_mut(&key) {
                         entry.size = size;
-                        entry.family = ui_family.clone();
                     }
                 }
                 ctx.set_style(style);
@@ -475,7 +564,18 @@ impl eframe::App for MdEditApp {
         self.handle_shortcuts(ctx);
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(self.title()));
 
-        egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
+        let menu_bg = self.ui_theme.menu_bg;
+        let menu_text = self.ui_theme.menu_text;
+
+        egui::TopBottomPanel::top("toolbar")
+            .frame(egui::Frame::default()
+                .fill(menu_bg)
+                .inner_margin(egui::Margin::symmetric(4.0, 2.0)))
+            .show(ctx, |ui| {
+            ui.visuals_mut().widgets.noninteractive.fg_stroke.color = menu_text;
+            ui.visuals_mut().widgets.inactive.fg_stroke.color = menu_text;
+            ui.visuals_mut().widgets.hovered.fg_stroke.color = menu_text;
+            ui.visuals_mut().widgets.active.fg_stroke.color = menu_text;
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("文件", |ui| {
                     if ui.button("新建 (Ctrl+N)").clicked() {
@@ -534,11 +634,19 @@ impl eframe::App for MdEditApp {
 
         if self.show_outline {
             let font_size = self.theme.font.base_size;
+            let sb = self.ui_theme.sidebar_bg;
+            let st = self.ui_theme.sidebar_text;
+            let sh = self.ui_theme.sidebar_hover_bg;
             egui::SidePanel::left("outline_panel")
                 .default_width(200.0)
-                .frame(egui::Frame::none().fill(self.theme.base.background))
+                .frame(egui::Frame::none().fill(sb))
                 .show(ctx, |ui| {
-                    ui.label(egui::RichText::new("大纲").size(font_size * 1.2).strong());
+                    ui.visuals_mut().widgets.noninteractive.fg_stroke.color = st;
+                    ui.visuals_mut().widgets.inactive.fg_stroke.color = st;
+                    ui.visuals_mut().widgets.hovered.bg_fill = sh;
+                    ui.visuals_mut().widgets.hovered.fg_stroke.color = st;
+                    ui.visuals_mut().widgets.active.fg_stroke.color = st;
+                    ui.label(egui::RichText::new("大纲").size(font_size * 1.2).strong().color(st));
                     ui.separator();
                     egui::ScrollArea::vertical()
                         .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
@@ -548,8 +656,8 @@ impl eframe::App for MdEditApp {
                             ui.horizontal(|ui| {
                                 ui.add_space(indent);
                                 let btn = ui.add(egui::Button::new(
-                                    egui::RichText::new(&item.title).size(font_size)
-                                ));
+                                    egui::RichText::new(&item.title).size(font_size).color(st)
+                                ).fill(egui::Color32::TRANSPARENT));
                                 if btn.clicked() {
                                     self.scroll_to_line = Some(item.line);
                                 }
@@ -559,9 +667,15 @@ impl eframe::App for MdEditApp {
                 });
         }
 
+        let editor_bg = if self.edit_mode == EditMode::Raw {
+            self.ui_theme.content_bg
+        } else {
+            self.theme.base.background
+        };
+
         egui::CentralPanel::default()
             .frame(egui::Frame::default()
-                .fill(self.theme.base.background)
+                .fill(editor_bg)
                 .inner_margin(egui::Margin::ZERO))
             .show(ctx, |ui| {
             egui::ScrollArea::vertical()
@@ -638,11 +752,13 @@ impl MdEditApp {
             }
         }
 
+        let edit_font = egui::FontId::monospace(self.theme.font.monospace_size);
+
         if blocks.is_empty() {
             let content = self.document.buffer.as_mut_string();
             let resp = ui.add(
                 egui::TextEdit::multiline(content)
-                    .font(egui::TextStyle::Monospace)
+                    .font(edit_font.clone())
                     .desired_width(f32::INFINITY)
                     .frame(false)
                     .hint_text("输入 Markdown..."),
@@ -663,7 +779,7 @@ impl MdEditApp {
             if is_active {
                 let resp = ui.add(
                     egui::TextEdit::multiline(&mut self.editing_text)
-                        .font(egui::TextStyle::Monospace)
+                        .font(edit_font.clone())
                         .desired_width(f32::INFINITY)
                         .frame(false),
                 );
@@ -725,9 +841,12 @@ impl MdEditApp {
 
     fn render_raw_editor(&mut self, ui: &mut egui::Ui) {
         let content = self.document.buffer.as_mut_string();
+        let font_id = egui::FontId::monospace(self.theme.font.monospace_size);
+        let text_color = self.ui_theme.sidebar_text;
+        ui.visuals_mut().override_text_color = Some(text_color);
         let resp = ui.add(
             egui::TextEdit::multiline(content)
-                .font(egui::TextStyle::Monospace)
+                .font(font_id)
                 .desired_width(f32::INFINITY)
                 .frame(false)
                 .hint_text("输入 Markdown..."),

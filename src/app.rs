@@ -222,6 +222,15 @@ fn load_note_theme(mode: ThemeMode) -> Option<Theme> {
         ThemeMode::Dark => Theme::dark(),
     };
 
+    let note_link_underline = nt.get("noteLinkUnderline")
+        .and_then(|v| v.as_str())
+        .map(|s| s == "underline")
+        .unwrap_or(true);
+    let note_code_style = nt.get("noteCodeStyle")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
     Some(Theme {
         name: match mode {
             ThemeMode::Light | ThemeMode::Auto => "light",
@@ -238,6 +247,7 @@ fn load_note_theme(mode: ThemeMode) -> Option<Theme> {
             block_bg: get_color("noteCodeBackgroundColor"),
             block_border_color: get_color("noteCodeBorderColor"),
             block_rounding: get_f32("noteCodeBorderRadius", 4.0),
+            block_style: note_code_style,
             ..base_theme.code
         },
         quote: QuoteStyle {
@@ -257,6 +267,7 @@ fn load_note_theme(mode: ThemeMode) -> Option<Theme> {
         },
         link: LinkStyle {
             color: get_color("noteLinkColor"),
+            underline: note_link_underline,
         },
         ..base_theme
     })
@@ -284,40 +295,118 @@ fn load_ui_theme(mode: ThemeMode) -> UiTheme {
     };
 
     UiTheme {
+        // === 应用基础 ===
         menu_bg: get("appBgColor"),
         menu_text: get("appHeaderTextColor"),
-        sidebar_bg: get("appSiderBarBgColor"),
-        sidebar_text: get("appSideTextColor"),
-        sidebar_hover_bg: get("appSideHoverBgColor"),
-        sidebar_active_bg: get("appLeftListBgColorActive"),
-        sidebar_active_text: get("appLeftListTextColorActive"),
-        content_bg: get("appContentNoteBgColor"),
-        border: get("borderColor"),
-        divider: get("appDividerColor"),
         text_color: get("textColor"),
         text_active_color: get("textActiveColor"),
+        border: get("borderColor"),
+        divider: get("appDividerColor"),
         split_color: get("appSplitColor"),
+
+        // === 侧边栏 ===
+        sidebar_bg: get("appSiderBarBgColor"),
+        sidebar_hover_bg: get("appSideHoverBgColor"),
         sidebar_active_text_color: get("appSideTextActiveColor"),
-        input_bg: get("inputContentBgColor"),
-        input_border: get("inputContentBorderColor"),
+        sidebar_text: get("appSideTextColor"),
+
+        // === 状态栏 ===
+        status_bar_bg: get("appStatusBarBgColor"),
+        status_bar_text: get("appStatusBarTextColor"),
+        status_bar_text_hover: get("appStatusBarTextHoverColor"),
+
+        // === 左侧列表 ===
+        left_list_bg: get("appLeftListBgColor"),
+        left_list_bg_hover: get("appLeftListBgColorHover"),
+        sidebar_active_bg: get("appLeftListBgColorActive"),
+        sidebar_active_text: get("appLeftListTextColorActive"),
+        search_title_bg: get("appSearchTitleBgColor"),
+
+        // === 右侧内容区域 ===
+        content_bg: get("appContentNoteBgColor"),
+        content_term_bg: get("appContentTermBgColor"),
+        content_chat_bg: get("appContentChatBgColor"),
+        content_chat_divider: get("appContentChatDividerColor"),
+        content_tran_bg: get("appContentTranBgColor"),
+
+        // === 弹出层 ===
+        dialog_bg: get("dialogBgColor"),
+        dialog_border: get("dialogBorderColor"),
+        dialog_divider: get("dialogDividerColor"),
+        dialog_text: get("dialogTextColor"),
+        dialog_text_active: get("dialogTextActiveColor"),
+
+        // === 下拉菜单 ===
         drop_down_text: get("dropDownColor"),
         drop_down_bg: get("dropDownBgColor"),
         drop_down_active_text: get("dropDownActiveColor"),
         drop_down_active_bg: get("dropDownActiveBgColor"),
+
+        // === AI Chat 消息 ===
+        chat_send_bg: get("appContentChatSendBgColor"),
+        chat_send_border: get("appContentChatSendBorderColor"),
+        chat_reply_bg: get("appContentChatReplyBgColor"),
+        chat_reply_border: get("appContentChatReplyBorderColor"),
+
+        // === 输入框 ===
+        input_bg: get("inputContentBgColor"),
+        input_border: get("inputContentBorderColor"),
+
+        // === 表格 ===
+        table_bg: get("tableBgColor"),
+        table_border: get("tableBorderColor"),
+        table_header_bg: get("tableHeaderBgColor"),
+        table_even_row_bg: get("tableEvenRowBgColor"),
     }
 }
 
 fn load_extra_theme(mode: ThemeMode) -> ExtraTheme {
     match mode {
+        // 文档 5.1 节 - 亮色扩展色
         ThemeMode::Light | ThemeMode::Auto => ExtraTheme {
-            outline_hover_color: egui::Color32::from_rgb(0x42, 0x85, 0xF4),
-            note_toolbar_header_bg: egui::Color32::from_rgb(0xF5, 0xF5, 0xF5),
+            tab_icon_color: egui::Color32::from_rgb(0x00, 0x00, 0x00),
             active_color: egui::Color32::from_rgb(0x00, 0x7A, 0xCC),
+            search_icon_color: egui::Color32::from_rgb(0x7C, 0x86, 0x8F),
+            edit_disabled_color: egui::Color32::from_rgb(0xC2, 0xC2, 0xC2),
+
+            note_tab_header_border: egui::Color32::from_rgb(0xD9, 0xD9, 0xD9),
+            note_toolbar_header_bg: egui::Color32::from_rgb(0xF5, 0xF5, 0xF5),
+            note_search_num_bg_color: egui::Color32::from_rgb(0xD8, 0xD8, 0xD8),
+            outline_hover_color: egui::Color32::from_rgb(0x42, 0x85, 0xF4),
+
+            table_th_bg: egui::Color32::from_rgb(0xEB, 0xEB, 0xEB),
+            table_td_bg: egui::Color32::from_rgb(0xF9, 0xF9, 0xF9),
+            table_hover_color: egui::Color32::from_rgb(0xEE, 0xEE, 0xEE),
+
+            progress_free_bg: egui::Color32::from_rgb(0xEA, 0xEA, 0xEA),
+            expand_table_bg: egui::Color32::WHITE,
+
+            info_title_btn_color: egui::Color32::from_rgb(0x00, 0x7A, 0xCB),
+            info_title_btn_border_color: egui::Color32::from_rgb(0x00, 0x7A, 0xCB),
+            info_title_btn_hover_bg_color: egui::Color32::from_rgb(0x00, 0x7A, 0xCB),
         },
+        // 文档 5.2 节 - 暗色扩展色
         ThemeMode::Dark => ExtraTheme {
-            outline_hover_color: egui::Color32::WHITE,
-            note_toolbar_header_bg: egui::Color32::from_rgb(0x02, 0x38, 0x48),
+            tab_icon_color: egui::Color32::from_rgb(0xCC, 0xCC, 0xCC),
             active_color: egui::Color32::WHITE,
+            search_icon_color: egui::Color32::from_rgb(0xCC, 0xCC, 0xCB),
+            edit_disabled_color: egui::Color32::from_rgba_unmultiplied(0xFF, 0xFF, 0xFF, 0x61),
+
+            note_tab_header_border: egui::Color32::from_rgb(0x10, 0x5C, 0x5D),
+            note_toolbar_header_bg: egui::Color32::from_rgb(0x02, 0x38, 0x48),
+            note_search_num_bg_color: egui::Color32::from_rgb(0x01, 0x53, 0x67),
+            outline_hover_color: egui::Color32::WHITE,
+
+            table_th_bg: egui::Color32::from_rgb(0x05, 0x37, 0x47),
+            table_td_bg: egui::Color32::from_rgb(0x00, 0x30, 0x3F),
+            table_hover_color: egui::Color32::from_rgb(0x03, 0x3C, 0x4F),
+
+            progress_free_bg: egui::Color32::WHITE,
+            expand_table_bg: egui::Color32::from_rgb(0x00, 0x27, 0x33),
+
+            info_title_btn_color: egui::Color32::from_rgb(0xCC, 0xCC, 0xCC),
+            info_title_btn_border_color: egui::Color32::from_rgb(0x00, 0x5A, 0x6F),
+            info_title_btn_hover_bg_color: egui::Color32::TRANSPARENT,
         },
     }
 }
@@ -331,49 +420,97 @@ impl Default for UiTheme {
 impl UiTheme {
     fn default_for(mode: ThemeMode) -> Self {
         match mode {
+            // Default Light Modern (文档 2.3 节)
             ThemeMode::Light | ThemeMode::Auto => UiTheme {
                 menu_bg: egui::Color32::from_rgb(0xF5, 0xF5, 0xF5),
                 menu_text: egui::Color32::from_rgb(0x33, 0x33, 0x33),
-                sidebar_bg: egui::Color32::WHITE,
-                sidebar_text: egui::Color32::from_rgb(0x66, 0x66, 0x66),
-                sidebar_hover_bg: egui::Color32::from_rgb(0xE3, 0xF2, 0xFD),
-                sidebar_active_bg: egui::Color32::from_rgb(0xE3, 0xF2, 0xFD),
-                sidebar_active_text: egui::Color32::from_rgb(0x00, 0x7A, 0xCC),
-                content_bg: egui::Color32::WHITE,
-                border: egui::Color32::from_rgb(0xCC, 0xCC, 0xCC),
-                divider: egui::Color32::from_rgb(0xE0, 0xE0, 0xE0),
                 text_color: egui::Color32::from_rgb(0x33, 0x33, 0x33),
                 text_active_color: egui::Color32::from_rgb(0x00, 0x7A, 0xCC),
+                border: egui::Color32::from_rgb(0xCC, 0xCC, 0xCC),
+                divider: egui::Color32::from_rgb(0xE0, 0xE0, 0xE0),
                 split_color: egui::Color32::from_rgb(0xE0, 0xE0, 0xE0),
+                sidebar_bg: egui::Color32::WHITE,
+                sidebar_hover_bg: egui::Color32::from_rgb(0xE3, 0xF2, 0xFD),
                 sidebar_active_text_color: egui::Color32::from_rgb(0x00, 0x7A, 0xCC),
-                input_bg: egui::Color32::WHITE,
-                input_border: egui::Color32::from_rgb(0xCC, 0xCC, 0xCC),
+                sidebar_text: egui::Color32::from_rgb(0x66, 0x66, 0x66),
+                status_bar_bg: egui::Color32::from_rgb(0xF5, 0xF5, 0xF5),
+                status_bar_text: egui::Color32::from_rgb(0x66, 0x66, 0x66),
+                status_bar_text_hover: egui::Color32::from_rgb(0x33, 0x33, 0x33),
+                left_list_bg: egui::Color32::WHITE,
+                left_list_bg_hover: egui::Color32::from_rgb(0xF5, 0xF5, 0xF5),
+                sidebar_active_bg: egui::Color32::from_rgb(0xE3, 0xF2, 0xFD),
+                sidebar_active_text: egui::Color32::from_rgb(0x00, 0x7A, 0xCC),
+                search_title_bg: egui::Color32::from_rgb(0xF5, 0xF5, 0xF5),
+                content_bg: egui::Color32::WHITE,
+                content_term_bg: egui::Color32::WHITE,
+                content_chat_bg: egui::Color32::WHITE,
+                content_chat_divider: egui::Color32::from_rgb(0xE0, 0xE0, 0xE0),
+                content_tran_bg: egui::Color32::WHITE,
+                dialog_bg: egui::Color32::WHITE,
+                dialog_border: egui::Color32::from_rgb(0xE0, 0xE0, 0xE0),
+                dialog_divider: egui::Color32::from_rgb(0xE0, 0xE0, 0xE0),
+                dialog_text: egui::Color32::from_rgb(0x33, 0x33, 0x33),
+                dialog_text_active: egui::Color32::from_rgb(0x00, 0x7A, 0xCC),
                 drop_down_text: egui::Color32::from_rgb(0x33, 0x33, 0x33),
                 drop_down_bg: egui::Color32::WHITE,
                 drop_down_active_text: egui::Color32::from_rgb(0x00, 0x7A, 0xCC),
                 drop_down_active_bg: egui::Color32::from_rgb(0xE3, 0xF2, 0xFD),
+                chat_send_bg: egui::Color32::from_rgb(0xE3, 0xF2, 0xFD),
+                chat_send_border: egui::Color32::from_rgb(0xCC, 0xCC, 0xCC),
+                chat_reply_bg: egui::Color32::WHITE,
+                chat_reply_border: egui::Color32::from_rgb(0xCC, 0xCC, 0xCC),
+                input_bg: egui::Color32::WHITE,
+                input_border: egui::Color32::from_rgb(0xCC, 0xCC, 0xCC),
+                table_bg: egui::Color32::WHITE,
+                table_border: egui::Color32::from_rgb(0xE0, 0xE0, 0xE0),
+                table_header_bg: egui::Color32::from_rgb(0xF5, 0xF5, 0xF5),
+                table_even_row_bg: egui::Color32::from_rgb(0xF9, 0xF9, 0xF9),
             },
+            // Solarized Dark (文档 2.2 节)
             ThemeMode::Dark => UiTheme {
                 menu_bg: egui::Color32::from_rgb(0x00, 0x2B, 0x36),
                 menu_text: egui::Color32::WHITE,
-                sidebar_bg: egui::Color32::from_rgb(0x07, 0x36, 0x42),
-                sidebar_text: egui::Color32::from_rgb(0xCC, 0xCC, 0xCC),
-                sidebar_hover_bg: egui::Color32::from_rgb(0x07, 0x36, 0x42),
-                sidebar_active_bg: egui::Color32::from_rgb(0x09, 0x47, 0x71),
-                sidebar_active_text: egui::Color32::WHITE,
-                content_bg: egui::Color32::from_rgb(0x00, 0x2B, 0x36),
-                border: egui::Color32::from_rgb(0x1A, 0x77, 0x78),
-                divider: egui::Color32::from_rgb(0x07, 0x36, 0x42),
                 text_color: egui::Color32::WHITE,
                 text_active_color: egui::Color32::WHITE,
+                border: egui::Color32::from_rgb(0x1A, 0x77, 0x78),
+                divider: egui::Color32::from_rgb(0x07, 0x36, 0x42),
                 split_color: egui::Color32::from_rgb(0x07, 0x36, 0x42),
+                sidebar_bg: egui::Color32::from_rgb(0x07, 0x36, 0x42),
+                sidebar_hover_bg: egui::Color32::from_rgb(0x07, 0x36, 0x42),
                 sidebar_active_text_color: egui::Color32::WHITE,
-                input_bg: egui::Color32::from_rgb(0x00, 0x22, 0x2B),
-                input_border: egui::Color32::from_rgb(0x1A, 0x77, 0x78),
+                sidebar_text: egui::Color32::from_rgb(0xCC, 0xCC, 0xCC),
+                status_bar_bg: egui::Color32::from_rgb(0x00, 0x2B, 0x36),
+                status_bar_text: egui::Color32::from_rgb(0xCC, 0xCC, 0xCC),
+                status_bar_text_hover: egui::Color32::WHITE,
+                left_list_bg: egui::Color32::from_rgb(0x07, 0x36, 0x42),
+                left_list_bg_hover: egui::Color32::from_rgb(0x09, 0x49, 0x5E),
+                sidebar_active_bg: egui::Color32::from_rgb(0x09, 0x47, 0x71),
+                sidebar_active_text: egui::Color32::WHITE,
+                search_title_bg: egui::Color32::from_rgb(0x07, 0x36, 0x42),
+                content_bg: egui::Color32::from_rgb(0x00, 0x2B, 0x36),
+                content_term_bg: egui::Color32::BLACK,
+                content_chat_bg: egui::Color32::from_rgb(0x00, 0x2B, 0x36),
+                content_chat_divider: egui::Color32::from_rgb(0x07, 0x36, 0x42),
+                content_tran_bg: egui::Color32::from_rgb(0x00, 0x2B, 0x36),
+                dialog_bg: egui::Color32::from_rgb(0x00, 0x22, 0x2B),
+                dialog_border: egui::Color32::from_rgb(0x1A, 0x77, 0x78),
+                dialog_divider: egui::Color32::from_rgb(0x07, 0x36, 0x42),
+                dialog_text: egui::Color32::from_rgb(0xCC, 0xCC, 0xCC),
+                dialog_text_active: egui::Color32::WHITE,
                 drop_down_text: egui::Color32::from_rgb(0xCC, 0xCC, 0xCC),
                 drop_down_bg: egui::Color32::from_rgb(0x00, 0x2B, 0x36),
                 drop_down_active_text: egui::Color32::WHITE,
                 drop_down_active_bg: egui::Color32::from_rgb(0x09, 0x49, 0x5E),
+                chat_send_bg: egui::Color32::from_rgb(0x07, 0x36, 0x42),
+                chat_send_border: egui::Color32::from_rgb(0x1A, 0x77, 0x78),
+                chat_reply_bg: egui::Color32::from_rgb(0x00, 0x22, 0x2B),
+                chat_reply_border: egui::Color32::from_rgb(0x1A, 0x77, 0x78),
+                input_bg: egui::Color32::from_rgb(0x00, 0x22, 0x2B),
+                input_border: egui::Color32::from_rgb(0x1A, 0x77, 0x78),
+                table_bg: egui::Color32::from_rgb(0x00, 0x2B, 0x36),
+                table_border: egui::Color32::from_rgb(0x07, 0x36, 0x42),
+                table_header_bg: egui::Color32::from_rgb(0x07, 0x36, 0x42),
+                table_even_row_bg: egui::Color32::from_rgb(0x00, 0x22, 0x2B),
             },
         }
     }

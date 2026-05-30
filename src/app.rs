@@ -293,6 +293,16 @@ fn load_ui_theme(mode: ThemeMode) -> UiTheme {
         content_bg: get("appContentNoteBgColor"),
         border: get("borderColor"),
         divider: get("appDividerColor"),
+        text_color: get("textColor"),
+        text_active_color: get("textActiveColor"),
+        split_color: get("appSplitColor"),
+        sidebar_active_text_color: get("appSideTextActiveColor"),
+        input_bg: get("inputContentBgColor"),
+        input_border: get("inputContentBorderColor"),
+        drop_down_text: get("dropDownColor"),
+        drop_down_bg: get("dropDownBgColor"),
+        drop_down_active_text: get("dropDownActiveColor"),
+        drop_down_active_bg: get("dropDownActiveBgColor"),
     }
 }
 
@@ -306,28 +316,48 @@ impl UiTheme {
     fn default_for(mode: ThemeMode) -> Self {
         match mode {
             ThemeMode::Light => UiTheme {
-                menu_bg: egui::Color32::from_rgb(0x5A, 0xB9, 0xC1),
-                menu_text: egui::Color32::from_rgb(0x3D, 0x3D, 0x3D),
-                sidebar_bg: egui::Color32::from_rgb(0xCB, 0xEC, 0xEF),
-                sidebar_text: egui::Color32::from_rgb(0x58, 0x5A, 0x60),
-                sidebar_hover_bg: egui::Color32::from_rgb(0xAA, 0xDB, 0xDF),
-                sidebar_active_bg: egui::Color32::from_rgb(0x5A, 0xB9, 0xC1),
-                sidebar_active_text: egui::Color32::WHITE,
+                menu_bg: egui::Color32::from_rgb(0xF5, 0xF5, 0xF5),
+                menu_text: egui::Color32::from_rgb(0x33, 0x33, 0x33),
+                sidebar_bg: egui::Color32::WHITE,
+                sidebar_text: egui::Color32::from_rgb(0x66, 0x66, 0x66),
+                sidebar_hover_bg: egui::Color32::from_rgb(0xE3, 0xF2, 0xFD),
+                sidebar_active_bg: egui::Color32::from_rgb(0xE3, 0xF2, 0xFD),
+                sidebar_active_text: egui::Color32::from_rgb(0x00, 0x7A, 0xCC),
                 content_bg: egui::Color32::WHITE,
-                border: egui::Color32::from_rgb(0x97, 0xBE, 0xC0),
-                divider: egui::Color32::from_rgb(0x9F, 0xD7, 0xDC),
+                border: egui::Color32::from_rgb(0xCC, 0xCC, 0xCC),
+                divider: egui::Color32::from_rgb(0xE0, 0xE0, 0xE0),
+                text_color: egui::Color32::from_rgb(0x33, 0x33, 0x33),
+                text_active_color: egui::Color32::from_rgb(0x00, 0x7A, 0xCC),
+                split_color: egui::Color32::from_rgb(0xE0, 0xE0, 0xE0),
+                sidebar_active_text_color: egui::Color32::from_rgb(0x00, 0x7A, 0xCC),
+                input_bg: egui::Color32::WHITE,
+                input_border: egui::Color32::from_rgb(0xCC, 0xCC, 0xCC),
+                drop_down_text: egui::Color32::from_rgb(0x33, 0x33, 0x33),
+                drop_down_bg: egui::Color32::WHITE,
+                drop_down_active_text: egui::Color32::from_rgb(0x00, 0x7A, 0xCC),
+                drop_down_active_bg: egui::Color32::from_rgb(0xE3, 0xF2, 0xFD),
             },
             ThemeMode::Dark => UiTheme {
-                menu_bg: egui::Color32::from_rgb(0x01, 0x40, 0x51),
-                menu_text: egui::Color32::from_rgb(0xCC, 0xCC, 0xCC),
-                sidebar_bg: egui::Color32::from_rgb(0x01, 0x40, 0x51),
+                menu_bg: egui::Color32::from_rgb(0x00, 0x2B, 0x36),
+                menu_text: egui::Color32::WHITE,
+                sidebar_bg: egui::Color32::from_rgb(0x07, 0x36, 0x42),
                 sidebar_text: egui::Color32::from_rgb(0xCC, 0xCC, 0xCC),
-                sidebar_hover_bg: egui::Color32::from_rgb(0x00, 0x5A, 0x6F),
-                sidebar_active_bg: egui::Color32::from_rgb(0x00, 0x5A, 0x6F),
-                sidebar_active_text: egui::Color32::from_rgb(0xCC, 0xCC, 0xCC),
-                content_bg: egui::Color32::from_rgb(0x00, 0x2C, 0x37),
+                sidebar_hover_bg: egui::Color32::from_rgb(0x07, 0x36, 0x42),
+                sidebar_active_bg: egui::Color32::from_rgb(0x09, 0x47, 0x71),
+                sidebar_active_text: egui::Color32::WHITE,
+                content_bg: egui::Color32::from_rgb(0x00, 0x2B, 0x36),
                 border: egui::Color32::from_rgb(0x1A, 0x77, 0x78),
-                divider: egui::Color32::from_rgb(0x19, 0x57, 0x55),
+                divider: egui::Color32::from_rgb(0x07, 0x36, 0x42),
+                text_color: egui::Color32::WHITE,
+                text_active_color: egui::Color32::WHITE,
+                split_color: egui::Color32::from_rgb(0x07, 0x36, 0x42),
+                sidebar_active_text_color: egui::Color32::WHITE,
+                input_bg: egui::Color32::from_rgb(0x00, 0x22, 0x2B),
+                input_border: egui::Color32::from_rgb(0x1A, 0x77, 0x78),
+                drop_down_text: egui::Color32::from_rgb(0xCC, 0xCC, 0xCC),
+                drop_down_bg: egui::Color32::from_rgb(0x00, 0x2B, 0x36),
+                drop_down_active_text: egui::Color32::WHITE,
+                drop_down_active_bg: egui::Color32::from_rgb(0x09, 0x49, 0x5E),
             },
         }
     }
@@ -932,7 +962,7 @@ impl MdEditApp {
     fn render_raw_editor(&mut self, ui: &mut egui::Ui) {
         let content = self.document.buffer.as_mut_string();
         let font_id = egui::FontId::monospace(self.theme.font.monospace_size);
-        let text_color = self.ui_theme.sidebar_text;
+        let text_color = self.ui_theme.text_color;
         ui.visuals_mut().override_text_color = Some(text_color);
         let resp = ui.add(
             egui::TextEdit::multiline(content)

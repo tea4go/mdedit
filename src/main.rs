@@ -70,9 +70,9 @@ fn log_monitors() {
         let mut dpi_y: u32 = 0;
         unsafe { GetDpiForMonitor(hmonitor, 0, &mut dpi_x, &mut dpi_y); }
 
-        let primary = if info.dw_flags & 1 != 0 { " [PRIMARY]" } else { "" };
+        let primary = if info.dw_flags & 1 != 0 { " [主屏]" } else { "" };
         let msg = format!(
-            "  monitor {:#x}: rect=({},{})~({},{}), work=({},{})~({},{}), dpi={}x{}, scale={}%{}",
+            "  显示器 {:#x}: 区域=({},{})~({},{}), 工作区=({},{})~({},{}), DPI={}x{}, 缩放={}%{}",
             hmonitor,
             info.rc_monitor[0], info.rc_monitor[1],
             info.rc_monitor[2], info.rc_monitor[3],
@@ -96,7 +96,7 @@ fn log_monitors() {
     unsafe { EnumDisplayMonitors(0, 0, enum_callback, 0); }
 
     let infos = MONITOR_INFO.lock().unwrap();
-    log_startup(&format!("monitors (count={}):", infos.len()));
+    log_startup(&format!("显示器 (共{}个):", infos.len()));
     for info in infos.iter() {
         log_startup(info);
     }
@@ -119,7 +119,7 @@ fn is_position_visible(x: f32, y: f32, w: f32, h: f32) -> bool {
     let monitor = unsafe { MonitorFromRect(&rc, MONITOR_DEFAULTTONULL) };
     let visible = monitor != 0;
     log_startup(&format!(
-        "MonitorFromRect(left={}, top={}, right={}, bottom={}) => monitor={:#x}, visible={}",
+        "MonitorFromRect(left={}, top={}, right={}, bottom={}) => monitor={:#x}, 可见={}",
         rc.left, rc.top, rc.right, rc.bottom, monitor, visible
     ));
     visible
@@ -179,14 +179,14 @@ fn main() -> eframe::Result<()> {
     let initial_file = load_initial_file();
     let cfg = config::AppConfig::load();
 
-    log_startup("========== mdedit startup ==========");
+    log_startup("========== mdedit 启动 ==========");
 
     // 打印所有显示器的坐标和 DPI
     #[cfg(windows)]
     log_monitors();
 
     log_startup(&format!(
-        "config: x={:?}, y={:?}, w={:?}, h={:?}, maximized={}",
+        "配置: x={:?}, y={:?}, w={:?}, h={:?}, maximized={}",
         cfg.window_x, cfg.window_y, cfg.window_width, cfg.window_height, cfg.maximized
     ));
 
@@ -198,7 +198,7 @@ fn main() -> eframe::Result<()> {
     #[cfg(not(windows))]
     let scale = 1.0f32;
 
-    log_startup(&format!("dpi_scale={}", scale));
+    log_startup(&format!("DPI 缩放={}", scale));
 
     let w = cfg.window_width.unwrap_or(1200.0).max(600.0);
     let h = cfg.window_height.unwrap_or(800.0).max(400.0);
@@ -208,17 +208,17 @@ fn main() -> eframe::Result<()> {
         // MonitorFromRect 直接用物理像素坐标
         if is_position_visible(x, y, w, h) {
             log_startup(&format!(
-                "applying with_position({}, {}) [physical=({}, {}), scale={}]",
-                x, y, x, y, scale
+                "恢复窗口位置: ({}, {}), 大小: ({}, {}), scale={}",
+                x, y, w, h, scale
             ));
             viewport = viewport.with_position([x, y]);
         } else {
             log_startup(&format!(
-                "position NOT visible: ({}, {}), using system default", x, y
+                "位置 ({}, {}) 不在可见区域，使用系统默认位置", x, y
             ));
         }
     } else {
-        log_startup("no saved position, using system default");
+        log_startup("无保存的位置，使用系统默认位置");
     }
     if cfg.maximized {
         viewport = viewport.with_maximized(true);

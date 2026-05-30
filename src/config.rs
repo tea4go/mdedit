@@ -25,6 +25,7 @@ pub struct AppConfig {
     pub window_height: Option<f32>,
     pub maximized: bool,
     pub theme: String,
+    pub edit_mode: String,
 }
 
 impl AppConfig {
@@ -42,6 +43,7 @@ impl AppConfig {
             window_height: map.get("window_height").and_then(|v| v.parse().ok()),
             maximized: map.get("maximized").map(|v| v == "true").unwrap_or(false),
             theme: map.get("theme").cloned().unwrap_or_default(),
+            edit_mode: map.get("edit_mode").cloned().unwrap_or_default(),
         }
     }
 
@@ -65,6 +67,9 @@ impl AppConfig {
         lines.push(format!("maximized={}", self.maximized));
         if !self.theme.is_empty() {
             lines.push(format!("theme={}", self.theme));
+        }
+        if !self.edit_mode.is_empty() {
+            lines.push(format!("edit_mode={}", self.edit_mode));
         }
         let content = lines.join("\n");
         let _ = std::fs::write(&path, content);

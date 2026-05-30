@@ -17,12 +17,19 @@ pub enum ThemeMode {
     Dark,
 }
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum EditMode {
+    Raw,
+    Preview,
+}
+
 pub struct MdEditApp {
     document: Document,
     outline_items: Vec<OutlineItem>,
     show_outline: bool,
     theme: Theme,
     theme_mode: ThemeMode,
+    edit_mode: EditMode,
     scroll_to_line: Option<usize>,
     active_block: Option<usize>,
     editing_text: String,
@@ -63,12 +70,19 @@ impl MdEditApp {
             ThemeMode::Light => cc.egui_ctx.set_visuals(egui::Visuals::light()),
         }
 
+        let edit_mode = if cfg.edit_mode == "raw" {
+            EditMode::Raw
+        } else {
+            EditMode::Preview
+        };
+
         Self {
             document,
             outline_items,
             show_outline: true,
             theme,
             theme_mode,
+            edit_mode,
             scroll_to_line: None,
             active_block: None,
             editing_text: String::new(),
@@ -293,6 +307,22 @@ impl eframe::App for MdEditApp {
                         }
                         ui.close_menu();
                     }
+                    ui.separator();
+                    ui.label("编辑模式");
+                    let prev_edit_mode = self.edit_mode;
+                    ui.radio_value(&mut self.edit_mode, EditMode::Preview, "预览编辑");
+                    ui.radio_value(&mut self.edit_mode, EditMode::Raw, "原始编辑");
+                    if self.edit_mode != prev_edit_mode {
+                        if self.edit_mode == EditMode::Raw {
+                            if self.active_block.is_some() {
+                                let snap = self.document.content().to_string();
+                                let blocks = editor::split_blocks(&snap);
+                                self.commit_edit(&blocks);
+                                self.active_block = None;
+                            }
+                        }
+                        ui.close_menu();
+                    }
                 });
             });
         });
@@ -367,6 +397,10 @@ impl MdEditApp {
                 ThemeMode::Light => "light".to_string(),
                 ThemeMode::Dark => "dark".to_string(),
             },
+            edit_mode: match self.edit_mode {
+                EditMode::Raw => "raw".to_string(),
+                EditMode::Preview => "preview".to_string(),
+            },
         };
         cfg.save();
     }
@@ -374,6 +408,11 @@ impl MdEditApp {
 
 impl MdEditApp {
     fn render_editor(&mut self, ui: &mut egui::Ui) {
+        if self.edit_mode == EditMode::Raw {
+            self.render_raw_editor(ui);
+            return;
+        }
+
         let content_snapshot = self.document.content().to_string();
         let blocks = editor::split_blocks(&content_snapshot);
 
@@ -469,6 +508,21 @@ impl MdEditApp {
                 *self.document.buffer.as_mut_string() = new_content;
                 self.document.modified = true;
             }
+        }
+    }
+
+    fn render_raw_editor(&mut self, ui: &mut egui::Ui) {
+        let content = self.document.buffer.as_mut_string();
+        let resp = ui.add(
+            egui::TextEdit::multiline(content)
+                .font(egui::TextStyle::Monospace)
+                .desired_width(f32::INFINITY)
+                .frame(false)
+                .hint_text("输入 Markdown..."),
+        );
+        if resp.changed() {
+            self.document.modified = true;
+            self.outline_items = outline::extract_outline(self.document.content());
         }
     }
 }

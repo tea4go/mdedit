@@ -29,6 +29,12 @@ struct NoteFontConfig {
     bold: bool,
 }
 
+struct ConfigFontConfig {
+    family: Vec<String>,
+    size: f32,
+    bold: bool,
+}
+
 fn find_font_data(font_name: &str) -> Option<Vec<u8>> {
     // Windows 系统字体目录
     let font_dir = std::path::Path::new(r"C:\Windows\Fonts");
@@ -120,6 +126,41 @@ fn load_note_font_config() -> NoteFontConfig {
     NoteFontConfig { family, size, bold }
 }
 
+fn load_config_font_config() -> ConfigFontConfig {
+    let path = PathBuf::from(r"C:\Users\tony\AppData\Roaming\WhaleTerm\preferences.json");
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return ConfigFontConfig {
+            family: Vec::new(),
+            size: 12.0,
+            bold: false,
+        },
+    };
+    let root: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(v) => v,
+        Err(_) => return ConfigFontConfig {
+            family: Vec::new(),
+            size: 12.0,
+            bold: false,
+        },
+    };
+    let config = match root.get("config") {
+        Some(n) => n,
+        None => return ConfigFontConfig {
+            family: Vec::new(),
+            size: 12.0,
+            bold: false,
+        },
+    };
+    let family = config.get("defaultFontFamily")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    let size = config.get("defaultFontSize").and_then(|v| v.as_f64()).unwrap_or(12.0) as f32;
+    let bold = config.get("defaultFontBold").and_then(|v| v.as_str()).map(|s| s == "bold").unwrap_or(false);
+    ConfigFontConfig { family, size, bold }
+}
+
 pub struct MdEditApp {
     document: Document,
     outline_items: Vec<OutlineItem>,
@@ -127,6 +168,8 @@ pub struct MdEditApp {
     theme: Theme,
     theme_mode: ThemeMode,
     edit_mode: EditMode,
+    ui_font_size: f32,
+    ui_font_bold: bool,
     scroll_to_line: Option<usize>,
     active_block: Option<usize>,
     editing_text: String,
@@ -145,7 +188,8 @@ impl MdEditApp {
         target_physical_pos: Option<(f32, f32)>,
     ) -> Self {
         let note_font = load_note_font_config();
-        Self::configure_fonts(&cc.egui_ctx, &note_font);
+        let config_font = load_config_font_config();
+        Self::configure_fonts(&cc.egui_ctx, &note_font, &config_font);
 
         let (document, outline_items) = if let Some((path, content)) = initial_file {
             let document = Document::from_file(path, content);
@@ -183,6 +227,8 @@ impl MdEditApp {
             theme,
             theme_mode,
             edit_mode,
+            ui_font_size: config_font.size,
+            ui_font_bold: config_font.bold,
             scroll_to_line: None,
             active_block: None,
             editing_text: String::new(),
@@ -194,17 +240,16 @@ impl MdEditApp {
         }
     }
 
-    fn configure_fonts(ctx: &egui::Context, note_font: &NoteFontConfig) {
+    fn configure_fonts(ctx: &egui::Context, note_font: &NoteFontConfig, config_font: &ConfigFontConfig) {
         let mut fonts = egui::FontDefinitions::default();
 
-        // 尝试加载配置中的字体
+        // 加载 note 字体（编辑区和大纲面板使用）
         for family_name in &note_font.family {
             if let Some(font_data) = find_font_data(family_name) {
                 fonts.font_data.insert(
                     "note_font".to_owned(),
                     egui::FontData::from_owned(font_data).into(),
                 );
-                // Proportional 和 Monospace 都插入到最前面
                 for family in [&egui::FontFamily::Proportional, &egui::FontFamily::Monospace] {
                     let list = fonts.families.get_mut(family).unwrap();
                     list.insert(0, "note_font".to_owned());
@@ -213,7 +258,31 @@ impl MdEditApp {
             }
         }
 
-        // 如果配置字体未加载成功，回退到系统默认 CJK 字体
+        // 加载 config 字体（UI 菜单栏等使用）
+        for family_name in &config_font.family {
+            if let Some(font_data) = find_font_data(family_name) {
+                fonts.font_data.insert(
+                    "ui_font".to_owned(),
+                    egui::FontData::from_owned(font_data).into(),
+                );
+                // 注册自定义 FontFamily 用于 UI，包含 fallback 字体
+                let mut ui_list = vec!["ui_font".to_owned()];
+                if let Some(prop_list) = fonts.families.get(&egui::FontFamily::Proportional) {
+                    for f in prop_list {
+                        if !ui_list.contains(f) {
+                            ui_list.push(f.clone());
+                        }
+                    }
+                }
+                fonts.families.insert(
+                    egui::FontFamily::Name("ui".into()),
+                    ui_list,
+                );
+                break;
+            }
+        }
+
+        // 如果 note 字体未加载成功，回退到系统默认 CJK 字体
         if !fonts.font_data.contains_key("note_font") {
             let fallback_paths = if cfg!(target_os = "windows") {
                 vec![
@@ -384,6 +453,23 @@ impl eframe::App for MdEditApp {
                 let pos = egui::pos2(px / ppp, py / ppp);
                 ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(pos));
             }
+
+            // 设置 UI 字体样式（菜单栏、按钮等）
+            {
+                let ui_family = egui::FontFamily::Name("ui".into());
+                let mut style = (*ctx.style()).clone();
+                for (key, size) in [
+                    (egui::TextStyle::Body, self.ui_font_size),
+                    (egui::TextStyle::Button, self.ui_font_size),
+                    (egui::TextStyle::Small, self.ui_font_size - 1.0),
+                ] {
+                    if let Some(entry) = style.text_styles.get_mut(&key) {
+                        entry.size = size;
+                        entry.family = ui_family.clone();
+                    }
+                }
+                ctx.set_style(style);
+            }
         }
 
         self.handle_shortcuts(ctx);
@@ -450,10 +536,13 @@ impl eframe::App for MdEditApp {
             let font_size = self.theme.font.base_size;
             egui::SidePanel::left("outline_panel")
                 .default_width(200.0)
+                .frame(egui::Frame::none().fill(self.theme.base.background))
                 .show(ctx, |ui| {
                     ui.label(egui::RichText::new("大纲").size(font_size * 1.2).strong());
                     ui.separator();
-                    egui::ScrollArea::vertical().show(ui, |ui| {
+                    egui::ScrollArea::vertical()
+                        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+                        .show(ui, |ui| {
                         for item in &self.outline_items {
                             let indent = (item.level as f32 - 1.0) * 12.0;
                             ui.horizontal(|ui| {
@@ -477,6 +566,7 @@ impl eframe::App for MdEditApp {
             .show(ctx, |ui| {
             egui::ScrollArea::vertical()
                 .id_salt("editor_scroll")
+                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
                 .show(ui, |ui| {
                     self.render_editor(ui);
                 });

@@ -1,10 +1,14 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use eframe::egui;
+use crate::css_loader;
 use crate::document::Document;
 use crate::editor::{self, TextBlock};
 use crate::outline::{self, OutlineItem};
 use crate::theme::Theme;
+
+const CSS_THEME_PATH: &str =
+    r"C:\Users\tony\AppData\Roaming\WhaleTerm\mynotes\files\markdown-theme\light.css";
 
 pub struct MdEditApp {
     document: Document,
@@ -31,11 +35,14 @@ impl MdEditApp {
             (Document::new(), Vec::new())
         };
 
+        let theme = css_loader::load_theme_from_css(Path::new(CSS_THEME_PATH))
+            .unwrap_or_default();
+
         Self {
             document,
             outline_items,
             show_outline: true,
-            theme: Theme::default(),
+            theme,
             scroll_to_line: None,
             active_block: None,
             editing_text: String::new(),

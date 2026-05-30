@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 mod app;
+mod css_loader;
 mod document;
 mod editor;
 mod outline;

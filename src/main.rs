@@ -39,6 +39,70 @@ fn get_dpi_scale() -> f32 {
 }
 
 #[cfg(windows)]
+fn log_monitors() {
+    use std::sync::Mutex;
+    static MONITOR_INFO: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+    #[repr(C)]
+    struct MONITORINFOEXW {
+        cb_size: u32,
+        rc_monitor: [i32; 4],  // left, top, right, bottom
+        rc_work: [i32; 4],
+        dw_flags: u32,
+        sz_device: [u16; 32],
+    }
+
+    extern "system" fn enum_callback(
+        hmonitor: usize, _hdc: usize, _lprect: usize, _lparam: isize
+    ) -> i32 {
+        extern "system" {
+            fn GetMonitorInfoW(hMonitor: usize, lpmi: *mut MONITORINFOEXW) -> i32;
+            fn GetDpiForMonitor(
+                hmonitor: usize, dpi_type: u32,
+                dpi_x: *mut u32, dpi_y: *mut u32,
+            ) -> i32;
+        }
+        let mut info: MONITORINFOEXW = unsafe { std::mem::zeroed() };
+        info.cb_size = std::mem::size_of::<MONITORINFOEXW>() as u32;
+        unsafe { GetMonitorInfoW(hmonitor, &mut info); }
+
+        let mut dpi_x: u32 = 0;
+        let mut dpi_y: u32 = 0;
+        unsafe { GetDpiForMonitor(hmonitor, 0, &mut dpi_x, &mut dpi_y); }
+
+        let primary = if info.dw_flags & 1 != 0 { " [PRIMARY]" } else { "" };
+        let msg = format!(
+            "  monitor {:#x}: rect=({},{})~({},{}), work=({},{})~({},{}), dpi={}x{}, scale={}%{}",
+            hmonitor,
+            info.rc_monitor[0], info.rc_monitor[1],
+            info.rc_monitor[2], info.rc_monitor[3],
+            info.rc_work[0], info.rc_work[1],
+            info.rc_work[2], info.rc_work[3],
+            dpi_x, dpi_y, dpi_x * 100 / 96, primary,
+        );
+        MONITOR_INFO.lock().unwrap().push(msg);
+        1 // continue
+    }
+
+    extern "system" {
+        fn EnumDisplayMonitors(
+            hdc: usize, lprc: usize,
+            lpfn: extern "system" fn(usize, usize, usize, isize) -> i32,
+            dwdata: isize,
+        ) -> i32;
+    }
+
+    MONITOR_INFO.lock().unwrap().clear();
+    unsafe { EnumDisplayMonitors(0, 0, enum_callback, 0); }
+
+    let infos = MONITOR_INFO.lock().unwrap();
+    log_startup(&format!("monitors (count={}):", infos.len()));
+    for info in infos.iter() {
+        log_startup(info);
+    }
+}
+
+#[cfg(windows)]
 fn is_position_visible(x: f32, y: f32, w: f32, h: f32) -> bool {
     #[repr(C)]
     struct RECT { left: i32, top: i32, right: i32, bottom: i32 }
@@ -116,6 +180,11 @@ fn main() -> eframe::Result<()> {
     let cfg = config::AppConfig::load();
 
     log_startup("========== mdedit startup ==========");
+
+    // 打印所有显示器的坐标和 DPI
+    #[cfg(windows)]
+    log_monitors();
+
     log_startup(&format!(
         "config: x={:?}, y={:?}, w={:?}, h={:?}, maximized={}",
         cfg.window_x, cfg.window_y, cfg.window_width, cfg.window_height, cfg.maximized

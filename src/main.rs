@@ -234,9 +234,9 @@ fn main() -> eframe::Result<()> {
         viewport = viewport.with_inner_size([1200.0, 800.0]);
     } else if let Some((x, y)) = setpos {
         log_startup(&format!("--setpos: 物理坐标({}, {})", x, y));
-        viewport = viewport.with_inner_size([w / scale, h / scale]);
+        viewport = viewport.with_inner_size([w, h]);
     } else {
-        viewport = viewport.with_inner_size([w / scale, h / scale]);
+        viewport = viewport.with_inner_size([w, h]);
 
         if let (Some(x), Some(y)) = (cfg.window_x, cfg.window_y) {
             if is_position_visible(x, y, w, h) {

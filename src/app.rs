@@ -316,13 +316,16 @@ impl eframe::App for MdEditApp {
                 });
         });
 
-        // 追踪窗口状态用于退出时保存（乘以 ppp 转为物理像素）
+        // 追踪窗口状态用于退出时保存
         let ppp = ctx.pixels_per_point();
         ctx.input(|i| {
             if let Some(rect) = i.viewport().inner_rect {
-                self.last_window_size = Some((rect.width() * ppp, rect.height() * ppp));
+                // inner_rect 是 egui points，with_inner_size 也接受 egui points
+                self.last_window_size = Some((rect.width(), rect.height()));
             }
             if let Some(rect) = i.viewport().outer_rect {
+                // outer_rect 是 egui points，恢复时通过 OuterPosition(物理/ppp) 设置
+                // 所以保存物理像素 = egui points * ppp
                 self.last_window_pos = Some((rect.min.x * ppp, rect.min.y * ppp));
             }
             self.last_maximized = i.viewport().maximized.unwrap_or(false);

@@ -17,6 +17,24 @@ use std::path::{Path, PathBuf};
 const CSS_THEME_DIR: &str =
     r"C:\Users\tony\AppData\Roaming\WhaleTerm\mynotes\files\markdown-theme";
 
+#[cfg(windows)]
+fn is_position_visible(x: f32, y: f32, _w: f32, _h: f32) -> bool {
+    #[repr(C)]
+    struct POINT { x: i32, y: i32 }
+    extern "system" {
+        fn MonitorFromPoint(pt: POINT, dwFlags: u32) -> usize;
+    }
+    const MONITOR_DEFAULTTONULL: u32 = 0;
+    let pt = POINT { x: x as i32 + 50, y: y as i32 + 50 };
+    let monitor = unsafe { MonitorFromPoint(pt, MONITOR_DEFAULTTONULL) };
+    monitor != 0
+}
+
+#[cfg(not(windows))]
+fn is_position_visible(x: f32, y: f32, _w: f32, _h: f32) -> bool {
+    x >= 0.0 && y >= 0.0 && x < 5000.0 && y < 3000.0
+}
+
 fn load_initial_file() -> Option<(PathBuf, String)> {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
@@ -59,13 +77,14 @@ fn main() -> eframe::Result<()> {
     let mut viewport = egui::ViewportBuilder::default()
         .with_min_inner_size([600.0, 400.0]);
 
-    if let (Some(w), Some(h)) = (cfg.window_width, cfg.window_height) {
-        viewport = viewport.with_inner_size([w, h]);
-    } else {
-        viewport = viewport.with_inner_size([1200.0, 800.0]);
-    }
+    let w = cfg.window_width.unwrap_or(1200.0).max(600.0);
+    let h = cfg.window_height.unwrap_or(800.0).max(400.0);
+    viewport = viewport.with_inner_size([w, h]);
+
     if let (Some(x), Some(y)) = (cfg.window_x, cfg.window_y) {
-        viewport = viewport.with_position([x, y]);
+        if is_position_visible(x, y, w, h) {
+            viewport = viewport.with_position([x, y]);
+        }
     }
     if cfg.maximized {
         viewport = viewport.with_maximized(true);

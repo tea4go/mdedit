@@ -220,7 +220,11 @@ fn main() -> eframe::Result<()> {
         .with_min_inner_size([600.0, 400.0]);
 
     #[cfg(windows)]
-    log_startup(&format!("系统 DPI 缩放={}", get_dpi_scale()));
+    let scale = get_dpi_scale();
+    #[cfg(not(windows))]
+    let scale = 1.0f32;
+
+    log_startup(&format!("系统 DPI 缩放={}", scale));
 
     let w = cfg.window_width.unwrap_or(1200.0).max(600.0);
     let h = cfg.window_height.unwrap_or(800.0).max(400.0);
@@ -229,19 +233,17 @@ fn main() -> eframe::Result<()> {
         log_startup("--reset: 重置窗口到主屏居中");
         viewport = viewport.with_inner_size([1200.0, 800.0]);
     } else if let Some((x, y)) = setpos {
-        log_startup(&format!("--setpos: 设置窗口位置为 ({}, {})", x, y));
-        viewport = viewport.with_inner_size([w, h]);
-        viewport = viewport.with_position([x, y]);
+        log_startup(&format!("--setpos: 物理坐标({}, {})", x, y));
+        viewport = viewport.with_inner_size([w / scale, h / scale]);
     } else {
-        viewport = viewport.with_inner_size([w, h]);
+        viewport = viewport.with_inner_size([w / scale, h / scale]);
 
         if let (Some(x), Some(y)) = (cfg.window_x, cfg.window_y) {
             if is_position_visible(x, y, w, h) {
                 log_startup(&format!(
-                    "恢复窗口位置: ({}, {}), 大小: ({}, {})",
+                    "恢复窗口位置: 物理({}, {}), 大小: ({}, {})",
                     x, y, w, h
                 ));
-                viewport = viewport.with_position([x, y]);
             } else {
                 log_startup(&format!(
                     "位置 ({}, {}) 不在可见区域，使用系统默认位置", x, y
@@ -255,6 +257,17 @@ fn main() -> eframe::Result<()> {
         }
     }
 
+    // 确定目标物理位置
+    let target_pos: Option<(f32, f32)> = if reset {
+        None
+    } else if let Some(pos) = setpos {
+        Some(pos)
+    } else if let (Some(x), Some(y)) = (cfg.window_x, cfg.window_y) {
+        if is_position_visible(x, y, w, h) { Some((x, y)) } else { None }
+    } else {
+        None
+    };
+
     let options = eframe::NativeOptions {
         viewport,
         ..Default::default()
@@ -263,6 +276,6 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "mdedit",
         options,
-        Box::new(move |cc| Ok(Box::new(app::MdEditApp::new(cc, initial_file, &cfg)))),
+        Box::new(move |cc| Ok(Box::new(app::MdEditApp::new(cc, initial_file, &cfg, target_pos)))),
     )
 }

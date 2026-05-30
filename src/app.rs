@@ -29,6 +29,8 @@ pub struct MdEditApp {
     last_window_pos: Option<(f32, f32)>,
     last_window_size: Option<(f32, f32)>,
     last_maximized: bool,
+    target_physical_pos: Option<(f32, f32)>,
+    frame_count: u32,
 }
 
 impl MdEditApp {
@@ -36,6 +38,7 @@ impl MdEditApp {
         cc: &eframe::CreationContext<'_>,
         initial_file: Option<(PathBuf, String)>,
         cfg: &AppConfig,
+        target_physical_pos: Option<(f32, f32)>,
     ) -> Self {
         Self::configure_fonts(&cc.egui_ctx);
 
@@ -66,6 +69,8 @@ impl MdEditApp {
             last_window_pos: None,
             last_window_size: None,
             last_maximized: false,
+            target_physical_pos,
+            frame_count: 0,
         }
     }
 
@@ -232,6 +237,16 @@ impl MdEditApp {
 
 impl eframe::App for MdEditApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.frame_count += 1;
+        // 第2帧：通过 ViewportCommand 设置窗口位置（物理坐标 / ppp）
+        if self.frame_count == 2 {
+            if let Some((px, py)) = self.target_physical_pos.take() {
+                let ppp = ctx.pixels_per_point();
+                let pos = egui::pos2(px / ppp, py / ppp);
+                ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(pos));
+            }
+        }
+
         self.handle_shortcuts(ctx);
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(self.title()));
 
@@ -301,13 +316,14 @@ impl eframe::App for MdEditApp {
                 });
         });
 
-        // 追踪窗口状态用于退出时保存
+        // 追踪窗口状态用于退出时保存（乘以 ppp 转为物理像素）
+        let ppp = ctx.pixels_per_point();
         ctx.input(|i| {
             if let Some(rect) = i.viewport().inner_rect {
-                self.last_window_size = Some((rect.width(), rect.height()));
+                self.last_window_size = Some((rect.width() * ppp, rect.height() * ppp));
             }
             if let Some(rect) = i.viewport().outer_rect {
-                self.last_window_pos = Some((rect.min.x, rect.min.y));
+                self.last_window_pos = Some((rect.min.x * ppp, rect.min.y * ppp));
             }
             self.last_maximized = i.viewport().maximized.unwrap_or(false);
         });

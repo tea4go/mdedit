@@ -565,6 +565,9 @@ pub struct MdEditApp {
     // 自动保存
     auto_save: AutoSaveState,
     auto_save_current_time: f64,
+
+    // 字体缩放
+    zoom_show_until: f64,
 }
 
 impl MdEditApp {
@@ -651,6 +654,7 @@ impl MdEditApp {
             outline_state: OutlineState::new(),
             auto_save: AutoSaveState::new(),
             auto_save_current_time: 0.0,
+            zoom_show_until: 0.0,
         }
     }
 
@@ -794,6 +798,7 @@ impl MdEditApp {
     fn handle_shortcuts(&mut self, ctx: &egui::Context) {
         let ctrl = ctx.input(|i| i.modifiers.ctrl);
         let shift = ctx.input(|i| i.modifiers.shift);
+        let current_time = ctx.input(|i| i.time);
         if ctrl {
             if ctx.input(|i| i.key_pressed(egui::Key::S)) {
                 if shift {
@@ -820,6 +825,31 @@ impl MdEditApp {
                     self.search_bar.query.clear();
                     self.search_bar.total_matches = 0;
                 }
+            }
+            if ctx.input(|i| i.key_pressed(egui::Key::E)) {
+                // Ctrl+E 切换编辑模式
+                match self.edit_mode {
+                    EditMode::Raw => self.edit_mode = EditMode::Preview,
+                    EditMode::Preview => self.edit_mode = EditMode::Raw,
+                }
+            }
+            // 字体缩放
+            let zoom_changed = ctx.input(|i| {
+                let mut changed = false;
+                if i.key_pressed(egui::Key::Plus) || i.key_pressed(egui::Key::Equals) {
+                    self.theme.font.base_size = (self.theme.font.base_size + 1.0).min(32.0);
+                    self.theme.font.monospace_size = self.theme.font.base_size;
+                    changed = true;
+                }
+                if i.key_pressed(egui::Key::Minus) {
+                    self.theme.font.base_size = (self.theme.font.base_size - 1.0).max(12.0);
+                    self.theme.font.monospace_size = self.theme.font.base_size;
+                    changed = true;
+                }
+                changed
+            });
+            if zoom_changed {
+                self.zoom_show_until = current_time + 3.0;
             }
         }
     }
@@ -1564,6 +1594,67 @@ impl eframe::App for MdEditApp {
                     self.render_editor(ui);
                 });
         });
+
+        // === 状态栏 ===
+        let sb_bg = self.ui_theme.status_bar_bg;
+        let sb_text = self.ui_theme.status_bar_text;
+        egui::TopBottomPanel::bottom("status_bar")
+            .exact_height(24.0)
+            .frame(egui::Frame::default().fill(sb_bg).inner_margin(egui::Margin::symmetric(8.0, 2.0)))
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(&self.title().replace(" - mdedit", ""))
+                        .size(self.ui_font_size - 1.0).color(sb_text));
+                    ui.separator();
+                    let mode = match self.edit_mode {
+                        EditMode::Raw => "SV",
+                        EditMode::Preview => "IR",
+                    };
+                    ui.label(egui::RichText::new(mode).size(self.ui_font_size - 1.0).color(sb_text));
+                    ui.separator();
+                    let char_count = self.document.content().chars().count();
+                    let line_count = self.document.content().lines().count();
+                    ui.label(egui::RichText::new(format!("{} 字符, {} 行", char_count, line_count))
+                        .size(self.ui_font_size - 1.0).color(sb_text));
+                    if self.document.modified {
+                        ui.separator();
+                        ui.label(egui::RichText::new("已修改").size(self.ui_font_size - 1.0)
+                            .color(egui::Color32::from_rgb(0xF0, 0xA0, 0x20)));
+                    }
+                });
+            });
+
+        // === 字体缩放浮动提示 ===
+        let current_time = ctx.input(|i| i.time);
+        if current_time < self.zoom_show_until {
+            egui::Area::new(egui::Id::new("zoom_indicator"))
+                .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-20.0, 50.0))
+                .order(egui::Order::Foreground)
+                .show(ctx, |ui| {
+                    let frame = egui::Frame::default()
+                        .fill(self.ui_theme.sidebar_bg)
+                        .rounding(egui::Rounding::same(4.0))
+                        .inner_margin(egui::Margin::symmetric(8.0, 4.0));
+                    frame.show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            if ui.add(egui::Button::new("-").frame(false)).clicked() {
+                                self.theme.font.base_size = (self.theme.font.base_size - 1.0).max(12.0);
+                                self.theme.font.monospace_size = self.theme.font.base_size;
+                            }
+                            ui.label(egui::RichText::new(format!("{:.0}px", self.theme.font.base_size))
+                                .size(self.ui_font_size).color(self.ui_theme.text_color));
+                            if ui.add(egui::Button::new("+").frame(false)).clicked() {
+                                self.theme.font.base_size = (self.theme.font.base_size + 1.0).min(32.0);
+                                self.theme.font.monospace_size = self.theme.font.base_size;
+                            }
+                            if ui.add(egui::Button::new("重置").frame(false)).clicked() {
+                                self.theme.font.base_size = 15.0;
+                                self.theme.font.monospace_size = 15.0;
+                            }
+                        });
+                    });
+                });
+        }
 
         // 追踪窗口状态用于退出时保存
         let ppp = ctx.pixels_per_point();

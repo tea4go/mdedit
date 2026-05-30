@@ -5,7 +5,7 @@ use crate::config::AppConfig;
 use crate::css_loader;
 use crate::document::Document;
 use crate::editor::{self, TextBlock};
-use crate::outline::{self, OutlineItem};
+use crate::outline::{self, OutlineItem, OutlineState, NumberFormat};
 use crate::theme::{Theme, UiTheme, ExtraTheme, CodeStyle, HeadingStyle, QuoteStyle, TableStyle, LinkStyle};
 use crate::toolbar::{self, ToolbarAction, ToolbarState};
 use crate::file_tree::{self, FileTreeState, FileTreeAction};
@@ -557,6 +557,9 @@ pub struct MdEditApp {
     // 搜索
     search_bar: SearchBarState,
     search_tree: SearchTreeState,
+
+    // 大纲状态
+    outline_state: OutlineState,
 }
 
 impl MdEditApp {
@@ -640,6 +643,7 @@ impl MdEditApp {
             file_tree: FileTreeState::new(),
             search_bar: SearchBarState::new(),
             search_tree: SearchTreeState::new(),
+            outline_state: OutlineState::new(),
         }
     }
 
@@ -1381,23 +1385,106 @@ impl eframe::App for MdEditApp {
                         LeftPanelTab::Outline => {
                             let oh = self.extra_theme.outline_hover_color;
                             let st = self.ui_theme.sidebar_text;
+                            let at = self.ui_theme.sidebar_active_text;
+                            let _ab = self.ui_theme.sidebar_active_bg;
                             ui.visuals_mut().widgets.hovered.bg_fill = oh;
                             ui.visuals_mut().widgets.hovered.fg_stroke.color = st;
                             ui.visuals_mut().widgets.active.fg_stroke.color = st;
 
+                            // 头部操作栏：展开级别 + 编号切换
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new("展开:").size(font_size * 0.85).color(st));
+                                for lvl in [1u8, 2, 3] {
+                                    let active = self.outline_state.expand_level == lvl;
+                                    let color = if active { at } else { st };
+                                    if ui.add(egui::Button::new(
+                                        egui::RichText::new(&lvl.to_string()).size(font_size * 0.85).color(color)
+                                    ).frame(active)).clicked() {
+                                        self.outline_state.expand_level = lvl;
+                                    }
+                                }
+                                if ui.add(egui::Button::new(
+                                    egui::RichText::new("All").size(font_size * 0.85).color(if self.outline_state.expand_level >= 6 { at } else { st })
+                                ).frame(self.outline_state.expand_level >= 6)).clicked() {
+                                    self.outline_state.expand_level = 6;
+                                }
+                                ui.separator();
+                                let num_text = if self.outline_state.show_numbers { "1." } else { "#" };
+                                if ui.add(egui::Button::new(
+                                    egui::RichText::new(num_text).size(font_size * 0.85).color(if self.outline_state.show_numbers { at } else { st })
+                                ).frame(self.outline_state.show_numbers)).clicked() {
+                                    self.outline_state.show_numbers = !self.outline_state.show_numbers;
+                                }
+                            });
+                            ui.separator();
+
+                            // 大纲内容
+                            let row_height = font_size * 3.0 - 4.0;
                             egui::ScrollArea::vertical()
                                 .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
                                 .show(ui, |ui| {
-                                for item in &self.outline_items {
-                                    let indent = (item.level as f32 - 1.0) * 12.0;
+                                for (idx, item) in self.outline_items.iter().enumerate() {
+                                    if !self.outline_state.is_visible(&self.outline_items, idx) { continue; }
+
+                                    let indent = self.outline_state.indent(item.level, font_size);
+                                    let item_font_size = self.outline_state.font_size(item.level, font_size);
+                                    let number = self.outline_state.generate_number(&self.outline_items, idx);
+
                                     ui.horizontal(|ui| {
-                                        ui.add_space(indent);
-                                        let btn = ui.add(egui::Button::new(
-                                            egui::RichText::new(&item.title).size(font_size).color(st)
-                                        ).fill(egui::Color32::TRANSPARENT));
+                                        ui.add_space(indent + 4.0);
+                                        let label = if number.is_empty() {
+                                            item.title.clone()
+                                        } else {
+                                            format!("{} {}", number, item.title)
+                                        };
+                                        let btn = ui.add_sized(
+                                            [ui.available_width(), row_height],
+                                            egui::Button::new(
+                                                egui::RichText::new(&label).size(item_font_size).color(st)
+                                            ).fill(egui::Color32::TRANSPARENT),
+                                        );
                                         if btn.clicked() {
                                             self.scroll_to_line = Some(item.line);
                                         }
+                                        // 右键菜单
+                                        btn.context_menu(|ui| {
+                                            if ui.button("展开到 1 级").clicked() {
+                                                self.outline_state.expand_level = 1;
+                                                ui.close_menu();
+                                            }
+                                            if ui.button("展开到 2 级").clicked() {
+                                                self.outline_state.expand_level = 2;
+                                                ui.close_menu();
+                                            }
+                                            if ui.button("展开到 3 级").clicked() {
+                                                self.outline_state.expand_level = 3;
+                                                ui.close_menu();
+                                            }
+                                            ui.separator();
+                                            if ui.button("全部展开").clicked() {
+                                                self.outline_state.expand_level = 6;
+                                                ui.close_menu();
+                                            }
+                                            ui.separator();
+                                            let num_label = if self.outline_state.show_numbers { "隐藏编号" } else { "显示编号" };
+                                            if ui.button(num_label).clicked() {
+                                                self.outline_state.show_numbers = !self.outline_state.show_numbers;
+                                                ui.close_menu();
+                                            }
+                                            if self.outline_state.show_numbers {
+                                                ui.horizontal(|ui| {
+                                                    ui.label("格式:");
+                                                    for (fmt, label) in [(NumberFormat::Dot, "1."), (NumberFormat::None, "1"), (NumberFormat::Comma, "1、")] {
+                                                        let active = self.outline_state.number_format == fmt;
+                                                        if ui.add(egui::Button::new(
+                                                            egui::RichText::new(label).size(font_size * 0.85).color(if active { at } else { st })
+                                                        ).frame(active)).clicked() {
+                                                            self.outline_state.number_format = fmt;
+                                                        }
+                                                    }
+                                                });
+                                            }
+                                        });
                                     });
                                 }
                             });

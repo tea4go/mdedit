@@ -1578,6 +1578,7 @@ dependencies = [
  "egui",
  "pulldown-cmark",
  "rfd",
+ "serde_json",
  "syntect",
 ]
 

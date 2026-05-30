@@ -23,6 +23,103 @@ pub enum EditMode {
     Preview,
 }
 
+struct NoteFontConfig {
+    family: Vec<String>,
+    size: f32,
+    bold: bool,
+}
+
+fn find_font_data(font_name: &str) -> Option<Vec<u8>> {
+    // Windows 系统字体目录
+    let font_dir = std::path::Path::new(r"C:\Windows\Fonts");
+    // 用户字体目录
+    let user_font_dir = std::path::Path::new(&std::env::var("LOCALAPPDATA").unwrap_or_default())
+        .join("Fonts");
+
+    // 字体名称到文件名的映射（常见中文字体）
+    let name_map: &[(&str, &str)] = &[
+        ("LXGW WenKai", "LXGWWenKai"),
+        ("LXGW WenKai Mono", "LXGWWenKaiMono"),
+        ("Microsoft YaHei", "msyh"),
+        ("Microsoft YaHei Mono", "msyh"),
+        ("SimSun", "simsun"),
+        ("SimHei", "simhei"),
+        ("PingFang SC", "PingFang"),
+        ("Noto Sans CJK SC", "NotoSansCJKsc"),
+    ];
+
+    // 先在映射表中查找
+    let file_prefix = name_map.iter()
+        .find(|(name, _)| font_name.eq_ignore_ascii_case(name))
+        .map(|(_, prefix)| prefix.to_string())
+        .unwrap_or_else(|| font_name.replace(' ', ""));
+
+    let extensions = ["ttf", "ttc", "otf"];
+
+    // 搜索系统字体目录和用户字体目录
+    let user_font_dir = user_font_dir.as_path();
+    for dir in [&font_dir, user_font_dir] {
+        for ext in &extensions {
+            // 尝试精确匹配
+            let filename = format!("{}.{}", file_prefix, ext);
+            let path = dir.join(&filename);
+            if path.exists() {
+                return std::fs::read(&path).ok();
+            }
+        }
+
+        // 遍历目录寻找包含字体名的文件
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                let name_lower = name.to_lowercase();
+                let prefix_lower = file_prefix.to_lowercase().replace(' ', "");
+                if name_lower.starts_with(&prefix_lower)
+                    && (name_lower.ends_with(".ttf") || name_lower.ends_with(".ttc") || name_lower.ends_with(".otf"))
+                {
+                    return std::fs::read(entry.path()).ok();
+                }
+            }
+        }
+    }
+    None
+}
+
+fn load_note_font_config() -> NoteFontConfig {
+    let path = PathBuf::from(r"C:\Users\tony\AppData\Roaming\WhaleTerm\preferences.json");
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return NoteFontConfig {
+            family: Vec::new(),
+            size: 15.0,
+            bold: false,
+        },
+    };
+    let root: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(v) => v,
+        Err(_) => return NoteFontConfig {
+            family: Vec::new(),
+            size: 15.0,
+            bold: false,
+        },
+    };
+    let note = match root.get("note") {
+        Some(n) => n,
+        None => return NoteFontConfig {
+            family: Vec::new(),
+            size: 15.0,
+            bold: false,
+        },
+    };
+    let family = note.get("fontFamily")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    let size = note.get("fontSize").and_then(|v| v.as_f64()).unwrap_or(15.0) as f32;
+    let bold = note.get("fontBold").and_then(|v| v.as_str()).map(|s| s == "bold").unwrap_or(false);
+    NoteFontConfig { family, size, bold }
+}
+
 pub struct MdEditApp {
     document: Document,
     outline_items: Vec<OutlineItem>,
@@ -47,7 +144,8 @@ impl MdEditApp {
         cfg: &AppConfig,
         target_physical_pos: Option<(f32, f32)>,
     ) -> Self {
-        Self::configure_fonts(&cc.egui_ctx);
+        let note_font = load_note_font_config();
+        Self::configure_fonts(&cc.egui_ctx, &note_font);
 
         let (document, outline_items) = if let Some((path, content)) = initial_file {
             let document = Document::from_file(path, content);
@@ -62,7 +160,9 @@ impl MdEditApp {
         } else {
             ThemeMode::Light
         };
-        let theme = Self::load_css_theme(theme_mode);
+        let mut theme = Self::load_css_theme(theme_mode);
+        theme.font.base_size = note_font.size;
+        theme.font.monospace_size = note_font.size - 2.0;
 
         // 设置 egui visuals 匹配主题
         match theme_mode {
@@ -94,41 +194,60 @@ impl MdEditApp {
         }
     }
 
-    fn configure_fonts(ctx: &egui::Context) {
+    fn configure_fonts(ctx: &egui::Context, note_font: &NoteFontConfig) {
         let mut fonts = egui::FontDefinitions::default();
 
-        let font_paths = if cfg!(target_os = "windows") {
-            vec![
-                "C:\\Windows\\Fonts\\msyh.ttc",
-                "C:\\Windows\\Fonts\\simsun.ttc",
-            ]
-        } else if cfg!(target_os = "macos") {
-            vec![
-                "/System/Library/Fonts/PingFang.ttc",
-                "/System/Library/Fonts/STHeiti Light.ttc",
-            ]
-        } else {
-            vec![
-                "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
-                "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-            ]
-        };
-
-        for path in font_paths {
-            if let Ok(font_data) = std::fs::read(path) {
+        // 尝试加载配置中的字体
+        for family_name in &note_font.family {
+            if let Some(font_data) = find_font_data(family_name) {
                 fonts.font_data.insert(
-                    "cjk_font".to_owned(),
+                    "note_font".to_owned(),
                     egui::FontData::from_owned(font_data).into(),
                 );
-                fonts.families
-                    .get_mut(&egui::FontFamily::Proportional)
-                    .unwrap()
-                    .push("cjk_font".to_owned());
-                fonts.families
-                    .get_mut(&egui::FontFamily::Monospace)
-                    .unwrap()
-                    .push("cjk_font".to_owned());
+                // Proportional 和 Monospace 都插入到最前面
+                for family in [&egui::FontFamily::Proportional, &egui::FontFamily::Monospace] {
+                    let list = fonts.families.get_mut(family).unwrap();
+                    list.insert(0, "note_font".to_owned());
+                }
                 break;
+            }
+        }
+
+        // 如果配置字体未加载成功，回退到系统默认 CJK 字体
+        if !fonts.font_data.contains_key("note_font") {
+            let fallback_paths = if cfg!(target_os = "windows") {
+                vec![
+                    "C:\\Windows\\Fonts\\msyh.ttc",
+                    "C:\\Windows\\Fonts\\simsun.ttc",
+                ]
+            } else if cfg!(target_os = "macos") {
+                vec![
+                    "/System/Library/Fonts/PingFang.ttc",
+                    "/System/Library/Fonts/STHeiti Light.ttc",
+                ]
+            } else {
+                vec![
+                    "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+                    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+                ]
+            };
+
+            for path in fallback_paths {
+                if let Ok(font_data) = std::fs::read(path) {
+                    fonts.font_data.insert(
+                        "cjk_font".to_owned(),
+                        egui::FontData::from_owned(font_data).into(),
+                    );
+                    fonts.families
+                        .get_mut(&egui::FontFamily::Proportional)
+                        .unwrap()
+                        .push("cjk_font".to_owned());
+                    fonts.families
+                        .get_mut(&egui::FontFamily::Monospace)
+                        .unwrap()
+                        .push("cjk_font".to_owned());
+                    break;
+                }
             }
         }
 
@@ -328,17 +447,20 @@ impl eframe::App for MdEditApp {
         });
 
         if self.show_outline {
+            let font_size = self.theme.font.base_size;
             egui::SidePanel::left("outline_panel")
                 .default_width(200.0)
                 .show(ctx, |ui| {
-                    ui.heading("大纲");
+                    ui.label(egui::RichText::new("大纲").size(font_size * 1.2).strong());
                     ui.separator();
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         for item in &self.outline_items {
                             let indent = (item.level as f32 - 1.0) * 12.0;
                             ui.horizontal(|ui| {
                                 ui.add_space(indent);
-                                let btn = ui.button(&item.title);
+                                let btn = ui.add(egui::Button::new(
+                                    egui::RichText::new(&item.title).size(font_size)
+                                ));
                                 if btn.clicked() {
                                     self.scroll_to_line = Some(item.line);
                                 }

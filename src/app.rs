@@ -319,7 +319,9 @@ impl eframe::App for MdEditApp {
         }
 
         egui::CentralPanel::default()
-            .frame(egui::Frame::default().fill(self.theme.base.background))
+            .frame(egui::Frame::default()
+                .fill(self.theme.base.background)
+                .inner_margin(egui::Margin::ZERO))
             .show(ctx, |ui| {
             egui::ScrollArea::vertical()
                 .id_salt("editor_scroll")

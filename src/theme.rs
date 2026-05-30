@@ -36,6 +36,7 @@ pub struct CodeStyle {
     pub block_text: Color32,
     pub block_rounding: f32,
     pub block_padding: f32,
+    pub block_border_color: Color32,
 }
 
 pub struct QuoteStyle {
@@ -53,6 +54,7 @@ pub struct TableStyle {
     pub alt_row_bg: Color32,
     pub border_color: Color32,
     pub cell_padding: f32,
+    pub border_radius: f32,
 }
 
 pub struct LinkStyle {
@@ -106,6 +108,7 @@ impl Theme {
                 block_text: Color32::from_rgb(51, 51, 51),
                 block_rounding: 4.0,
                 block_padding: 14.0,
+                block_border_color: Color32::from_rgb(209, 213, 218),
             },
             quote: QuoteStyle {
                 bar_color: Color32::from_rgb(221, 221, 221),
@@ -121,6 +124,7 @@ impl Theme {
                 alt_row_bg: Color32::from_rgb(246, 248, 250),
                 border_color: Color32::from_rgb(209, 213, 218),
                 cell_padding: 6.0,
+                border_radius: 4.0,
             },
             link: LinkStyle {
                 color: Color32::from_rgb(91, 164, 229),
@@ -170,6 +174,7 @@ impl Theme {
                 block_text: Color32::from_rgb(205, 214, 244),
                 block_rounding: 4.0,
                 block_padding: 14.0,
+                block_border_color: Color32::from_rgb(88, 91, 112),
             },
             quote: QuoteStyle {
                 bar_color: Color32::from_rgb(137, 180, 250),
@@ -185,6 +190,7 @@ impl Theme {
                 alt_row_bg: Color32::from_rgb(36, 36, 54),
                 border_color: Color32::from_rgb(88, 91, 112),
                 cell_padding: 6.0,
+                border_radius: 4.0,
             },
             link: LinkStyle {
                 color: Color32::from_rgb(137, 180, 250),

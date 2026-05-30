@@ -6,7 +6,7 @@ use crate::css_loader;
 use crate::document::Document;
 use crate::editor::{self, TextBlock};
 use crate::outline::{self, OutlineItem};
-use crate::theme::{Theme, UiTheme};
+use crate::theme::{Theme, UiTheme, CodeStyle, HeadingStyle, QuoteStyle, TableStyle, LinkStyle};
 
 const CSS_THEME_DIR: &str =
     r"C:\Users\tony\AppData\Roaming\WhaleTerm\mynotes\files\markdown-theme";
@@ -176,19 +176,95 @@ fn parse_hex_color(val: &str) -> Option<egui::Color32> {
             let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
             Some(egui::Color32::from_rgb(r, g, b))
         }
+        8 => {
+            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+            let a = u8::from_str_radix(&hex[6..8], 16).ok()?;
+            Some(egui::Color32::from_rgba_unmultiplied(r, g, b, a))
+        }
         _ => None,
     }
 }
 
-fn load_ui_theme(mode: ThemeMode) -> UiTheme {
+fn read_preferences() -> Option<serde_json::Value> {
     let path = PathBuf::from(r"C:\Users\tony\AppData\Roaming\WhaleTerm\preferences.json");
-    let content = match std::fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(_) => return UiTheme::default_for(mode),
+    let content = std::fs::read_to_string(&path).ok()?;
+    serde_json::from_str(&content).ok()
+}
+
+fn load_note_theme(mode: ThemeMode) -> Option<Theme> {
+    let root = read_preferences()?;
+    let key = match mode {
+        ThemeMode::Light => "noteThemeLight",
+        ThemeMode::Dark => "noteThemeDark",
     };
-    let root: serde_json::Value = match serde_json::from_str(&content) {
-        Ok(v) => v,
-        Err(_) => return UiTheme::default_for(mode),
+    let nt = root.get(key)?;
+
+    let get_color = |field: &str| -> egui::Color32 {
+        nt.get(field)
+            .and_then(|v| v.as_str())
+            .and_then(parse_hex_color)
+            .unwrap_or(egui::Color32::GRAY)
+    };
+    let get_f32 = |field: &str, default: f32| -> f32 {
+        nt.get(field).and_then(|v| v.as_f64()).map(|v| v as f32).unwrap_or(default)
+    };
+
+    let h1 = get_color("noteH1Color");
+    let h2 = get_color("noteH2Color");
+    let h3 = get_color("noteH3Color");
+    let h4 = get_color("noteH4Color");
+
+    let base_theme = match mode {
+        ThemeMode::Light => Theme::light(),
+        ThemeMode::Dark => Theme::dark(),
+    };
+
+    Some(Theme {
+        name: match mode {
+            ThemeMode::Light => "light",
+            ThemeMode::Dark => "dark",
+        },
+        base: base_theme.base,
+        heading: HeadingStyle {
+            colors: [h1, h2, h3, h4, h4, h4],
+            ..base_theme.heading
+        },
+        code: CodeStyle {
+            inline_bg: get_color("noteMarkerBackgroundColor"),
+            inline_text: get_color("noteMarkerTextColor"),
+            block_bg: get_color("noteCodeBackgroundColor"),
+            block_border_color: get_color("noteCodeBorderColor"),
+            block_rounding: get_f32("noteCodeBorderRadius", 4.0),
+            ..base_theme.code
+        },
+        quote: QuoteStyle {
+            bar_color: get_color("noteQuoteBorderColor"),
+            bg_color: get_color("noteQuoteBackgroundColor"),
+            text_color: get_color("noteQuoteTextColor"),
+            bar_width: get_f32("noteQuoteBorderWidth", 4.0),
+            ..base_theme.quote
+        },
+        table: TableStyle {
+            header_bg: get_color("noteTableHeaderBgColor"),
+            row_bg: get_color("noteTableBgColor"),
+            alt_row_bg: get_color("noteTableEvenRowBgColor"),
+            border_color: get_color("noteTableBorderColor"),
+            border_radius: get_f32("noteTableBorderRadius", 4.0),
+            ..base_theme.table
+        },
+        link: LinkStyle {
+            color: get_color("noteLinkColor"),
+        },
+        ..base_theme
+    })
+}
+
+fn load_ui_theme(mode: ThemeMode) -> UiTheme {
+    let root = match read_preferences() {
+        Some(r) => r,
+        None => return UiTheme::default_for(mode),
     };
     let key = match mode {
         ThemeMode::Light => "themeLight",
@@ -301,7 +377,12 @@ impl MdEditApp {
         } else {
             ThemeMode::Light
         };
-        let mut theme = Self::load_css_theme(theme_mode);
+        let mut theme = load_note_theme(theme_mode)
+            .or_else(|| Some(Self::load_css_theme(theme_mode)))
+            .unwrap_or_else(|| match theme_mode {
+                ThemeMode::Light => Theme::light(),
+                ThemeMode::Dark => Theme::dark(),
+            });
         theme.font.base_size = note_font.size;
         theme.font.monospace_size = note_font.size;
         let ui_theme = load_ui_theme(theme_mode);
@@ -429,7 +510,16 @@ impl MdEditApp {
 
     fn switch_theme(&mut self, mode: ThemeMode) {
         self.theme_mode = mode;
-        self.theme = Self::load_css_theme(mode);
+        let font_size = self.theme.font.base_size;
+        let mut theme = load_note_theme(mode)
+            .or_else(|| Some(Self::load_css_theme(mode)))
+            .unwrap_or_else(|| match mode {
+                ThemeMode::Light => Theme::light(),
+                ThemeMode::Dark => Theme::dark(),
+            });
+        theme.font.base_size = font_size;
+        theme.font.monospace_size = font_size;
+        self.theme = theme;
         self.ui_theme = load_ui_theme(mode);
     }
 

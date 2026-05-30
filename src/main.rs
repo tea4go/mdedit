@@ -18,15 +18,22 @@ const CSS_THEME_DIR: &str =
     r"C:\Users\tony\AppData\Roaming\WhaleTerm\mynotes\files\markdown-theme";
 
 #[cfg(windows)]
-fn is_position_visible(x: f32, y: f32, _w: f32, _h: f32) -> bool {
+fn is_position_visible(x: f32, y: f32, w: f32, h: f32) -> bool {
     #[repr(C)]
-    struct POINT { x: i32, y: i32 }
+    struct RECT { left: i32, top: i32, right: i32, bottom: i32 }
     extern "system" {
-        fn MonitorFromPoint(pt: POINT, dwFlags: u32) -> usize;
+        fn MonitorFromRect(lprc: *const RECT, dwFlags: u32) -> usize;
     }
     const MONITOR_DEFAULTTONULL: u32 = 0;
-    let pt = POINT { x: x as i32 + 50, y: y as i32 + 50 };
-    let monitor = unsafe { MonitorFromPoint(pt, MONITOR_DEFAULTTONULL) };
+    // 直接用坐标值（不做 DPI 转换），因为 winit 在 DPI-aware 模式下
+    // 创建窗口时也会用相同的坐标系
+    let rc = RECT {
+        left: x as i32,
+        top: y as i32,
+        right: (x + w) as i32,
+        bottom: (y + h) as i32,
+    };
+    let monitor = unsafe { MonitorFromRect(&rc, MONITOR_DEFAULTTONULL) };
     monitor != 0
 }
 

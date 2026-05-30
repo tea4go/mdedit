@@ -29,6 +29,7 @@ pub struct MdEditApp {
     last_window_pos: Option<(f32, f32)>,
     last_window_size: Option<(f32, f32)>,
     last_maximized: bool,
+    first_frame: bool,
 }
 
 impl MdEditApp {
@@ -66,6 +67,7 @@ impl MdEditApp {
             last_window_pos: None,
             last_window_size: None,
             last_maximized: false,
+            first_frame: true,
         }
     }
 
@@ -232,6 +234,29 @@ impl MdEditApp {
 
 impl eframe::App for MdEditApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // 首帧检查：如果窗口不在可见区域，移到主屏幕
+        if self.first_frame {
+            self.first_frame = false;
+            let need_reposition = ctx.input(|i| {
+                if let Some(outer) = i.viewport().outer_rect {
+                    let monitor_w = i.viewport().monitor_size
+                        .map(|s| s.x).unwrap_or(1920.0);
+                    let monitor_h = i.viewport().monitor_size
+                        .map(|s| s.y).unwrap_or(1080.0);
+                    // 窗口完全在可见区域外
+                    outer.min.x >= monitor_w || outer.min.y >= monitor_h
+                        || outer.max.x <= 0.0 || outer.max.y <= 0.0
+                } else {
+                    false
+                }
+            });
+            if need_reposition {
+                ctx.send_viewport_cmd(
+                    egui::ViewportCommand::OuterPosition(egui::pos2(100.0, 100.0))
+                );
+            }
+        }
+
         self.handle_shortcuts(ctx);
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(self.title()));
 
@@ -304,7 +329,6 @@ impl eframe::App for MdEditApp {
         // 追踪窗口状态用于退出时保存
         ctx.input(|i| {
             if let Some(rect) = i.viewport().inner_rect {
-                self.last_window_pos = Some((rect.min.x, rect.min.y));
                 self.last_window_size = Some((rect.width(), rect.height()));
             }
             if let Some(rect) = i.viewport().outer_rect {

@@ -1563,14 +1563,77 @@ impl eframe::App for MdEditApp {
                         }
                     }
 
-                    // 底部工具栏
+                    // 底部工具栏 - 对齐原版截图: [新建文件] [新建文件夹] | [搜索框] [搜索文件] [搜索内容]
+                    let bottom_split = self.ui_theme.split_color;
+                    let _bottom_bg = self.ui_theme.left_list_bg;
                     ui.separator();
                     ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                         let btn_color = self.ui_theme.text_color;
+                        let icon_size = self.ui_font_size + 2.0;
+
+                        // 新建文件按钮
                         if ui.add(egui::Button::new(
-                            egui::RichText::new("+ 新建").size(self.ui_font_size).color(btn_color)
+                            egui::RichText::new("\u{1F4C4}+").size(icon_size).color(btn_color)
                         ).frame(false)).clicked() {
-                            self.new_file();
+                            if let Some(dir) = self.file_tree.data_dir.clone() {
+                                let name = "新建文件.md";
+                                let mut final_path = dir.join(name);
+                                let mut i = 1;
+                                while final_path.exists() {
+                                    final_path = dir.join(format!("新建文件{}.md", i));
+                                    i += 1;
+                                }
+                                let _ = std::fs::write(&final_path, "");
+                                self.file_tree.refresh();
+                            }
+                        }
+
+                        // 新建文件夹按钮
+                        if ui.add(egui::Button::new(
+                            egui::RichText::new("\u{1F4C2}+").size(icon_size).color(btn_color)
+                        ).frame(false)).clicked() {
+                            if let Some(dir) = self.file_tree.data_dir.clone() {
+                                let mut final_path = dir.join("新建文件夹");
+                                let mut i = 1;
+                                while final_path.exists() {
+                                    final_path = dir.join(format!("新建文件夹{}", i));
+                                    i += 1;
+                                }
+                                let _ = std::fs::create_dir_all(&final_path);
+                                self.file_tree.refresh();
+                            }
+                        }
+
+                        // 分隔线
+                        let sep_rect = ui.available_rect_before_wrap();
+                        let sep_x = sep_rect.min.x;
+                        let sep_h = 19.0;
+                        let sep_y = sep_rect.center().y - sep_h / 2.0;
+                        ui.add_space(2.0);
+                        ui.painter().line_segment(
+                            [egui::pos2(sep_x + 1.0, sep_y), egui::pos2(sep_x + 1.0, sep_y + sep_h)],
+                            egui::Stroke::new(1.0, bottom_split),
+                        );
+                        ui.add_space(4.0);
+
+                        // 搜索框
+                        let search_query = &mut self.search_tree.query;
+                        let resp = ui.add(
+                            egui::TextEdit::singleline(search_query)
+                                .font(egui::FontId::proportional(self.ui_font_size))
+                                .desired_width(ui.available_width() - 50.0)
+                                .hint_text("搜索..."),
+                        );
+
+                        // 搜索按钮
+                        if ui.add(egui::Button::new(
+                            egui::RichText::new("\u{1F50D}").size(20.0).color(btn_color)
+                        ).frame(false)).clicked() || (resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))) {
+                            if let Some(dir) = self.file_tree.data_dir.clone() {
+                                let q = search_query.clone();
+                                self.search_tree.search(&q, &dir);
+                                self.active_tab = LeftPanelTab::Search;
+                            }
                         }
                     });
                 });

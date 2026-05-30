@@ -15,6 +15,7 @@ const CSS_THEME_DIR: &str =
 pub enum ThemeMode {
     Light,
     Dark,
+    Auto,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -196,7 +197,7 @@ fn read_preferences() -> Option<serde_json::Value> {
 fn load_note_theme(mode: ThemeMode) -> Option<Theme> {
     let root = read_preferences()?;
     let key = match mode {
-        ThemeMode::Light => "noteThemeLight",
+        ThemeMode::Light | ThemeMode::Auto => "noteThemeLight",
         ThemeMode::Dark => "noteThemeDark",
     };
     let nt = root.get(key)?;
@@ -217,13 +218,13 @@ fn load_note_theme(mode: ThemeMode) -> Option<Theme> {
     let h4 = get_color("noteH4Color");
 
     let base_theme = match mode {
-        ThemeMode::Light => Theme::light(),
+        ThemeMode::Light | ThemeMode::Auto => Theme::light(),
         ThemeMode::Dark => Theme::dark(),
     };
 
     Some(Theme {
         name: match mode {
-            ThemeMode::Light => "light",
+            ThemeMode::Light | ThemeMode::Auto => "light",
             ThemeMode::Dark => "dark",
         },
         base: base_theme.base,
@@ -267,7 +268,7 @@ fn load_ui_theme(mode: ThemeMode) -> UiTheme {
         None => return UiTheme::default_for(mode),
     };
     let key = match mode {
-        ThemeMode::Light => "themeLight",
+        ThemeMode::Light | ThemeMode::Auto => "themeLight",
         ThemeMode::Dark => "themeDark",
     };
     let theme_obj = match root.get(key) {
@@ -308,7 +309,7 @@ fn load_ui_theme(mode: ThemeMode) -> UiTheme {
 
 fn load_extra_theme(mode: ThemeMode) -> ExtraTheme {
     match mode {
-        ThemeMode::Light => ExtraTheme {
+        ThemeMode::Light | ThemeMode::Auto => ExtraTheme {
             outline_hover_color: egui::Color32::from_rgb(0x42, 0x85, 0xF4),
             note_toolbar_header_bg: egui::Color32::from_rgb(0xF5, 0xF5, 0xF5),
             active_color: egui::Color32::from_rgb(0x00, 0x7A, 0xCC),
@@ -330,7 +331,7 @@ impl Default for UiTheme {
 impl UiTheme {
     fn default_for(mode: ThemeMode) -> Self {
         match mode {
-            ThemeMode::Light => UiTheme {
+            ThemeMode::Light | ThemeMode::Auto => UiTheme {
                 menu_bg: egui::Color32::from_rgb(0xF5, 0xF5, 0xF5),
                 menu_text: egui::Color32::from_rgb(0x33, 0x33, 0x33),
                 sidebar_bg: egui::Color32::WHITE,
@@ -420,24 +421,31 @@ impl MdEditApp {
 
         let theme_mode = if cfg.theme == "dark" {
             ThemeMode::Dark
+        } else if cfg.theme == "auto" {
+            ThemeMode::Auto
         } else {
             ThemeMode::Light
         };
-        let mut theme = load_note_theme(theme_mode)
-            .or_else(|| Some(Self::load_css_theme(theme_mode)))
-            .unwrap_or_else(|| match theme_mode {
+        let effective = match theme_mode {
+            ThemeMode::Auto => if Self::is_system_dark() { ThemeMode::Dark } else { ThemeMode::Light },
+            _ => theme_mode,
+        };
+        let mut theme = load_note_theme(effective)
+            .or_else(|| Some(Self::load_css_theme(effective)))
+            .unwrap_or_else(|| match effective {
                 ThemeMode::Light => Theme::light(),
                 ThemeMode::Dark => Theme::dark(),
+                ThemeMode::Auto => Theme::light(),
             });
         theme.font.base_size = note_font.size;
         theme.font.monospace_size = note_font.size;
-        let ui_theme = load_ui_theme(theme_mode);
-        let extra_theme = load_extra_theme(theme_mode);
+        let ui_theme = load_ui_theme(effective);
+        let extra_theme = load_extra_theme(effective);
 
         // 设置 egui visuals 匹配主题
-        match theme_mode {
+        match effective {
             ThemeMode::Dark => cc.egui_ctx.set_visuals(egui::Visuals::dark()),
-            ThemeMode::Light => cc.egui_ctx.set_visuals(egui::Visuals::light()),
+            _ => cc.egui_ctx.set_visuals(egui::Visuals::light()),
         }
 
         let edit_mode = if cfg.edit_mode == "raw" {
@@ -544,32 +552,61 @@ impl MdEditApp {
 
     fn load_css_theme(mode: ThemeMode) -> Theme {
         let filename = match mode {
-            ThemeMode::Light => "light.css",
+            ThemeMode::Light | ThemeMode::Auto => "light.css",
             ThemeMode::Dark => "dark.css",
         };
         let path = Path::new(CSS_THEME_DIR).join(filename);
         css_loader::load_theme_from_css(&path).unwrap_or_else(|| {
             match mode {
-                ThemeMode::Light => Theme::light(),
+                ThemeMode::Light | ThemeMode::Auto => Theme::light(),
                 ThemeMode::Dark => Theme::dark(),
             }
         })
     }
 
+    fn is_system_dark() -> bool {
+        let output = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-Command",
+                "(Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize').AppsUseLightTheme"])
+            .output();
+        match output {
+            Ok(out) => {
+                let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                s == "0"
+            },
+            Err(_) => false,
+        }
+    }
+
+    fn effective_mode(&self) -> (ThemeMode, ThemeMode) {
+        match self.theme_mode {
+            ThemeMode::Auto => {
+                let effective = if Self::is_system_dark() { ThemeMode::Dark } else { ThemeMode::Light };
+                (ThemeMode::Auto, effective)
+            },
+            other => (other, other),
+        }
+    }
+
     fn switch_theme(&mut self, mode: ThemeMode) {
         self.theme_mode = mode;
+        let effective = match mode {
+            ThemeMode::Auto => if Self::is_system_dark() { ThemeMode::Dark } else { ThemeMode::Light },
+            _ => mode,
+        };
         let font_size = self.theme.font.base_size;
-        let mut theme = load_note_theme(mode)
-            .or_else(|| Some(Self::load_css_theme(mode)))
-            .unwrap_or_else(|| match mode {
+        let mut theme = load_note_theme(effective)
+            .or_else(|| Some(Self::load_css_theme(effective)))
+            .unwrap_or_else(|| match effective {
                 ThemeMode::Light => Theme::light(),
                 ThemeMode::Dark => Theme::dark(),
+                ThemeMode::Auto => Theme::light(),
             });
         theme.font.base_size = font_size;
         theme.font.monospace_size = font_size;
         self.theme = theme;
-        self.ui_theme = load_ui_theme(mode);
-        self.extra_theme = load_extra_theme(mode);
+        self.ui_theme = load_ui_theme(effective);
+        self.extra_theme = load_extra_theme(effective);
     }
 
     fn update_outline(&mut self) {
@@ -743,11 +780,13 @@ impl eframe::App for MdEditApp {
                     let prev_mode = self.theme_mode;
                     ui.radio_value(&mut self.theme_mode, ThemeMode::Light, "浅色");
                     ui.radio_value(&mut self.theme_mode, ThemeMode::Dark, "深色");
+                    ui.radio_value(&mut self.theme_mode, ThemeMode::Auto, "跟随系统");
                     if self.theme_mode != prev_mode {
                         self.switch_theme(self.theme_mode);
-                        match self.theme_mode {
+                        let (_, effective) = self.effective_mode();
+                        match effective {
                             ThemeMode::Dark => ctx.set_visuals(egui::Visuals::dark()),
-                            ThemeMode::Light => ctx.set_visuals(egui::Visuals::light()),
+                            _ => ctx.set_visuals(egui::Visuals::light()),
                         }
                         ui.close_menu();
                     }
@@ -861,6 +900,7 @@ impl MdEditApp {
             theme: match self.theme_mode {
                 ThemeMode::Light => "light".to_string(),
                 ThemeMode::Dark => "dark".to_string(),
+                ThemeMode::Auto => "auto".to_string(),
             },
             edit_mode: match self.edit_mode {
                 EditMode::Raw => "raw".to_string(),

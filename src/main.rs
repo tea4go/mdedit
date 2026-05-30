@@ -194,11 +194,7 @@ fn main() -> eframe::Result<()> {
         .with_min_inner_size([600.0, 400.0]);
 
     #[cfg(windows)]
-    let scale = get_dpi_scale();
-    #[cfg(not(windows))]
-    let scale = 1.0f32;
-
-    log_startup(&format!("DPI 缩放={}", scale));
+    log_startup(&format!("系统 DPI 缩放={}", get_dpi_scale()));
 
     let w = cfg.window_width.unwrap_or(1200.0).max(600.0);
     let h = cfg.window_height.unwrap_or(800.0).max(400.0);
@@ -212,8 +208,8 @@ fn main() -> eframe::Result<()> {
         if let (Some(x), Some(y)) = (cfg.window_x, cfg.window_y) {
             if is_position_visible(x, y, w, h) {
                 log_startup(&format!(
-                    "恢复窗口位置: ({}, {}), 大小: ({}, {}), scale={}",
-                    x, y, w, h, scale
+                    "恢复窗口位置: ({}, {}), 大小: ({}, {})",
+                    x, y, w, h
                 ));
                 viewport = viewport.with_position([x, y]);
             } else {

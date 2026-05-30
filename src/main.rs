@@ -30,6 +30,15 @@ fn log_startup(msg: &str) {
 }
 
 #[cfg(windows)]
+fn get_dpi_scale() -> f32 {
+    extern "system" {
+        fn GetDpiForSystem() -> u32;
+    }
+    let dpi = unsafe { GetDpiForSystem() };
+    dpi as f32 / 96.0
+}
+
+#[cfg(windows)]
 fn is_position_visible(x: f32, y: f32, w: f32, h: f32) -> bool {
     #[repr(C)]
     struct RECT { left: i32, top: i32, right: i32, bottom: i32 }
@@ -105,13 +114,23 @@ fn main() -> eframe::Result<()> {
     let mut viewport = egui::ViewportBuilder::default()
         .with_min_inner_size([600.0, 400.0]);
 
+    #[cfg(windows)]
+    let scale = get_dpi_scale();
+    #[cfg(not(windows))]
+    let scale = 1.0f32;
+
+    log_startup(&format!("dpi_scale={}", scale));
+
     let w = cfg.window_width.unwrap_or(1200.0).max(600.0);
     let h = cfg.window_height.unwrap_or(800.0).max(400.0);
-    viewport = viewport.with_inner_size([w, h]);
+    viewport = viewport.with_inner_size([w / scale, h / scale]);
 
     if let (Some(x), Some(y)) = (cfg.window_x, cfg.window_y) {
         if is_position_visible(x, y, w, h) {
-            log_startup(&format!("applying position: ({}, {}), inner_size: ({}, {})", x, y, w, h));
+            log_startup(&format!(
+                "applying with_position({}, {}), with_inner_size({}, {})",
+                x, y, w / scale, h / scale
+            ));
             viewport = viewport.with_position([x, y]);
         } else {
             log_startup("position NOT visible, using system default");

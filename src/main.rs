@@ -5,6 +5,7 @@ mod config;
 mod css_loader;
 mod document;
 mod editor;
+mod file_tree;
 mod outline;
 mod renderer;
 mod theme;

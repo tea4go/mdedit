@@ -8,6 +8,7 @@ use crate::editor::{self, TextBlock};
 use crate::outline::{self, OutlineItem};
 use crate::theme::{Theme, UiTheme, ExtraTheme, CodeStyle, HeadingStyle, QuoteStyle, TableStyle, LinkStyle};
 use crate::toolbar::{self, ToolbarAction, ToolbarState};
+use crate::file_tree::{self, FileTreeState, FileTreeAction};
 
 const CSS_THEME_DIR: &str =
     r"C:\Users\tony\AppData\Roaming\WhaleTerm\mynotes\files\markdown-theme";
@@ -548,6 +549,9 @@ pub struct MdEditApp {
     left_panel_width: f32,
     active_tab: LeftPanelTab,
     left_panel_resizing: bool,
+
+    // 文件树
+    file_tree: FileTreeState,
 }
 
 impl MdEditApp {
@@ -627,6 +631,11 @@ impl MdEditApp {
             left_panel_width: 250.0,
             active_tab: LeftPanelTab::Outline,
             left_panel_resizing: false,
+
+            file_tree: {
+                let ft = FileTreeState::new();
+                ft
+            },
         }
     }
 
@@ -804,6 +813,12 @@ impl MdEditApp {
             .pick_file()
         {
             if let Ok(content) = std::fs::read_to_string(&path) {
+                // 如果文件树没有数据目录，用文件所在目录初始化
+                if self.file_tree.data_dir.is_none() {
+                    if let Some(parent) = path.parent() {
+                        self.file_tree.set_data_dir(parent.to_path_buf());
+                    }
+                }
                 self.document = Document::from_file(path, content);
                 self.update_outline();
             }
@@ -1210,11 +1225,84 @@ impl eframe::App for MdEditApp {
                     // 内容区域
                     match self.active_tab {
                         LeftPanelTab::Tree => {
-                            ui.vertical(|ui| {
-                                ui.add_space(8.0);
-                                ui.label(egui::RichText::new("文件树").size(font_size).color(tab_text));
-                                ui.label(egui::RichText::new("（待实现）").size(font_size * 0.9).color(self.ui_theme.sidebar_text));
-                            });
+                            if self.file_tree.data_dir.is_none() {
+                                ui.vertical(|ui| {
+                                    ui.add_space(8.0);
+                                    ui.label(egui::RichText::new("未设置数据目录").size(font_size).color(tab_text));
+                                    if ui.button("选择目录...").clicked() {
+                                        if let Some(path) = rfd::FileDialog::new()
+                                            .pick_folder()
+                                        {
+                                            self.file_tree.set_data_dir(path);
+                                        }
+                                    }
+                                });
+                            } else {
+                                let hover_bg = self.ui_theme.left_list_bg_hover;
+                                let active_bg = self.ui_theme.sidebar_active_bg;
+                                let active_text = self.ui_theme.sidebar_active_text;
+                                let tree_result = file_tree::render_file_tree(
+                                    ui, &mut self.file_tree,
+                                    self.ui_theme.sidebar_text,
+                                    hover_bg, active_bg, active_text,
+                                    font_size,
+                                );
+                                // 处理文件树事件
+                                if let Some(path) = tree_result.clicked_file {
+                                    if let Ok(content) = std::fs::read_to_string(&path) {
+                                        self.document = Document::from_file(path, content);
+                                        self.update_outline();
+                                    }
+                                }
+                                match tree_result.action {
+                                    FileTreeAction::NewFile(dir) => {
+                                        let name = "新建文件.md";
+                                        let path = dir.join(name);
+                                        let mut i = 1;
+                                        let mut final_path = path.clone();
+                                        while final_path.exists() {
+                                            final_path = dir.join(format!("新建文件{}.md", i));
+                                            i += 1;
+                                        }
+                                        if let Err(e) = std::fs::write(&final_path, "") {
+                                            eprintln!("创建文件失败: {}", e);
+                                        }
+                                        self.file_tree.refresh();
+                                    }
+                                    FileTreeAction::NewFolder(dir) => {
+                                        let name = "新建文件夹";
+                                        let mut final_path = dir.join(name);
+                                        let mut i = 1;
+                                        while final_path.exists() {
+                                            final_path = dir.join(format!("新建文件夹{}", i));
+                                            i += 1;
+                                        }
+                                        if let Err(e) = std::fs::create_dir_all(&final_path) {
+                                            eprintln!("创建文件夹失败: {}", e);
+                                        }
+                                        self.file_tree.refresh();
+                                    }
+                                    FileTreeAction::Delete(path) => {
+                                        if path.is_dir() {
+                                            let _ = std::fs::remove_dir_all(&path);
+                                        } else {
+                                            let _ = std::fs::remove_file(&path);
+                                        }
+                                        if self.document.path.as_ref() == Some(&path) {
+                                            self.document = Document::new();
+                                            self.outline_items.clear();
+                                        }
+                                        self.file_tree.refresh();
+                                    }
+                                    FileTreeAction::Rename(_path) => {
+                                        // TODO: 重命名对话框
+                                    }
+                                    FileTreeAction::Refresh => {
+                                        self.file_tree.refresh();
+                                    }
+                                    FileTreeAction::None => {}
+                                }
+                            }
                         }
                         LeftPanelTab::Outline => {
                             let oh = self.extra_theme.outline_hover_color;

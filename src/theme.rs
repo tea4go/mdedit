@@ -241,3 +241,9 @@ pub struct UiTheme {
     pub drop_down_active_text: Color32,
     pub drop_down_active_bg: Color32,
 }
+
+pub struct ExtraTheme {
+    pub outline_hover_color: Color32,
+    pub note_toolbar_header_bg: Color32,
+    pub active_color: Color32,
+}

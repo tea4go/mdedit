@@ -6,7 +6,7 @@ use crate::css_loader;
 use crate::document::Document;
 use crate::editor::{self, TextBlock};
 use crate::outline::{self, OutlineItem};
-use crate::theme::{Theme, UiTheme, CodeStyle, HeadingStyle, QuoteStyle, TableStyle, LinkStyle};
+use crate::theme::{Theme, UiTheme, ExtraTheme, CodeStyle, HeadingStyle, QuoteStyle, TableStyle, LinkStyle};
 
 const CSS_THEME_DIR: &str =
     r"C:\Users\tony\AppData\Roaming\WhaleTerm\mynotes\files\markdown-theme";
@@ -306,6 +306,21 @@ fn load_ui_theme(mode: ThemeMode) -> UiTheme {
     }
 }
 
+fn load_extra_theme(mode: ThemeMode) -> ExtraTheme {
+    match mode {
+        ThemeMode::Light => ExtraTheme {
+            outline_hover_color: egui::Color32::from_rgb(0x42, 0x85, 0xF4),
+            note_toolbar_header_bg: egui::Color32::from_rgb(0xF5, 0xF5, 0xF5),
+            active_color: egui::Color32::from_rgb(0x00, 0x7A, 0xCC),
+        },
+        ThemeMode::Dark => ExtraTheme {
+            outline_hover_color: egui::Color32::WHITE,
+            note_toolbar_header_bg: egui::Color32::from_rgb(0x02, 0x38, 0x48),
+            active_color: egui::Color32::WHITE,
+        },
+    }
+}
+
 impl Default for UiTheme {
     fn default() -> Self {
         Self::default_for(ThemeMode::Light)
@@ -370,6 +385,7 @@ pub struct MdEditApp {
     theme: Theme,
     theme_mode: ThemeMode,
     ui_theme: UiTheme,
+    extra_theme: ExtraTheme,
     edit_mode: EditMode,
     ui_font_size: f32,
     ui_font_bold: bool,
@@ -416,6 +432,7 @@ impl MdEditApp {
         theme.font.base_size = note_font.size;
         theme.font.monospace_size = note_font.size;
         let ui_theme = load_ui_theme(theme_mode);
+        let extra_theme = load_extra_theme(theme_mode);
 
         // 设置 egui visuals 匹配主题
         match theme_mode {
@@ -436,6 +453,7 @@ impl MdEditApp {
             theme,
             theme_mode,
             ui_theme,
+            extra_theme,
             edit_mode,
             ui_font_size: config_font.size,
             ui_font_bold: config_font.bold,
@@ -551,6 +569,7 @@ impl MdEditApp {
         theme.font.monospace_size = font_size;
         self.theme = theme;
         self.ui_theme = load_ui_theme(mode);
+        self.extra_theme = load_extra_theme(mode);
     }
 
     fn update_outline(&mut self) {
@@ -756,14 +775,14 @@ impl eframe::App for MdEditApp {
             let font_size = self.theme.font.base_size;
             let sb = self.ui_theme.sidebar_bg;
             let st = self.ui_theme.sidebar_text;
-            let sh = self.ui_theme.sidebar_hover_bg;
+            let oh = self.extra_theme.outline_hover_color;
             egui::SidePanel::left("outline_panel")
                 .default_width(200.0)
                 .frame(egui::Frame::none().fill(sb))
                 .show(ctx, |ui| {
                     ui.visuals_mut().widgets.noninteractive.fg_stroke.color = st;
                     ui.visuals_mut().widgets.inactive.fg_stroke.color = st;
-                    ui.visuals_mut().widgets.hovered.bg_fill = sh;
+                    ui.visuals_mut().widgets.hovered.bg_fill = oh;
                     ui.visuals_mut().widgets.hovered.fg_stroke.color = st;
                     ui.visuals_mut().widgets.active.fg_stroke.color = st;
                     ui.label(egui::RichText::new("大纲").size(font_size * 1.2).strong().color(st));

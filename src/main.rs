@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 mod app;
+mod config;
 mod css_loader;
 mod document;
 mod editor;
@@ -53,16 +54,31 @@ fn main() -> eframe::Result<()> {
     }
 
     let initial_file = load_initial_file();
+    let cfg = config::AppConfig::load();
+
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_min_inner_size([600.0, 400.0]);
+
+    if let (Some(w), Some(h)) = (cfg.window_width, cfg.window_height) {
+        viewport = viewport.with_inner_size([w, h]);
+    } else {
+        viewport = viewport.with_inner_size([1200.0, 800.0]);
+    }
+    if let (Some(x), Some(y)) = (cfg.window_x, cfg.window_y) {
+        viewport = viewport.with_position([x, y]);
+    }
+    if cfg.maximized {
+        viewport = viewport.with_maximized(true);
+    }
+
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1200.0, 800.0])
-            .with_min_inner_size([600.0, 400.0]),
+        viewport,
         ..Default::default()
     };
 
     eframe::run_native(
         "mdedit",
         options,
-        Box::new(move |cc| Ok(Box::new(app::MdEditApp::new(cc, initial_file)))),
+        Box::new(move |cc| Ok(Box::new(app::MdEditApp::new(cc, initial_file, &cfg)))),
     )
 }

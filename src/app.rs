@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use eframe::egui;
+use crate::config::AppConfig;
 use crate::css_loader;
 use crate::document::Document;
 use crate::editor::{self, TextBlock};
@@ -25,12 +26,16 @@ pub struct MdEditApp {
     scroll_to_line: Option<usize>,
     active_block: Option<usize>,
     editing_text: String,
+    last_window_pos: Option<(f32, f32)>,
+    last_window_size: Option<(f32, f32)>,
+    last_maximized: bool,
 }
 
 impl MdEditApp {
     pub fn new(
         cc: &eframe::CreationContext<'_>,
         initial_file: Option<(PathBuf, String)>,
+        cfg: &AppConfig,
     ) -> Self {
         Self::configure_fonts(&cc.egui_ctx);
 
@@ -42,7 +47,11 @@ impl MdEditApp {
             (Document::new(), Vec::new())
         };
 
-        let theme_mode = ThemeMode::Light;
+        let theme_mode = if cfg.theme == "dark" {
+            ThemeMode::Dark
+        } else {
+            ThemeMode::Light
+        };
         let theme = Self::load_css_theme(theme_mode);
 
         Self {
@@ -54,6 +63,9 @@ impl MdEditApp {
             scroll_to_line: None,
             active_block: None,
             editing_text: String::new(),
+            last_window_pos: None,
+            last_window_size: None,
+            last_maximized: false,
         }
     }
 
@@ -288,6 +300,43 @@ impl eframe::App for MdEditApp {
                     self.render_editor(ui);
                 });
         });
+
+        // 追踪窗口状态用于退出时保存
+        ctx.input(|i| {
+            if let Some(rect) = i.viewport().inner_rect {
+                self.last_window_pos = Some((rect.min.x, rect.min.y));
+                self.last_window_size = Some((rect.width(), rect.height()));
+            }
+            if let Some(rect) = i.viewport().outer_rect {
+                self.last_window_pos = Some((rect.min.x, rect.min.y));
+            }
+            self.last_maximized = i.viewport().maximized.unwrap_or(false);
+        });
+    }
+
+    fn save(&mut self, _storage: &mut dyn eframe::Storage) {
+        self.save_config();
+    }
+
+    fn on_exit(&mut self) {
+        self.save_config();
+    }
+}
+
+impl MdEditApp {
+    fn save_config(&self) {
+        let cfg = AppConfig {
+            window_x: self.last_window_pos.map(|(x, _)| x),
+            window_y: self.last_window_pos.map(|(_, y)| y),
+            window_width: self.last_window_size.map(|(w, _)| w),
+            window_height: self.last_window_size.map(|(_, h)| h),
+            maximized: self.last_maximized,
+            theme: match self.theme_mode {
+                ThemeMode::Light => "light".to_string(),
+                ThemeMode::Dark => "dark".to_string(),
+            },
+        };
+        cfg.save();
     }
 }
 

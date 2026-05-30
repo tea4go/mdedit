@@ -2,12 +2,12 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 fn config_path() -> PathBuf {
-    let mut path = dirs();
+    let mut path = config_dir();
     path.push("config.ini");
     path
 }
 
-fn dirs() -> PathBuf {
+pub fn config_dir() -> PathBuf {
     if let Some(appdata) = std::env::var_os("APPDATA") {
         let mut p = PathBuf::from(appdata);
         p.push("mdedit");
@@ -46,7 +46,7 @@ impl AppConfig {
     }
 
     pub fn save(&self) {
-        let dir = dirs();
+        let dir = config_dir();
         let _ = std::fs::create_dir_all(&dir);
         let path = config_path();
         let mut lines = Vec::new();

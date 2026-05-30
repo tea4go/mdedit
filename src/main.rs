@@ -12,10 +12,22 @@ mod theme;
 use eframe::egui;
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 const CSS_THEME_DIR: &str =
     r"C:\Users\tony\AppData\Roaming\WhaleTerm\mynotes\files\markdown-theme";
+
+fn log_startup(msg: &str) {
+    let log_path = config::config_dir().join("startup.log");
+    if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let _ = writeln!(f, "[{}] {}", now, msg);
+    }
+}
 
 #[cfg(windows)]
 fn is_position_visible(x: f32, y: f32, w: f32, h: f32) -> bool {
@@ -25,8 +37,6 @@ fn is_position_visible(x: f32, y: f32, w: f32, h: f32) -> bool {
         fn MonitorFromRect(lprc: *const RECT, dwFlags: u32) -> usize;
     }
     const MONITOR_DEFAULTTONULL: u32 = 0;
-    // 直接用坐标值（不做 DPI 转换），因为 winit 在 DPI-aware 模式下
-    // 创建窗口时也会用相同的坐标系
     let rc = RECT {
         left: x as i32,
         top: y as i32,
@@ -34,7 +44,12 @@ fn is_position_visible(x: f32, y: f32, w: f32, h: f32) -> bool {
         bottom: (y + h) as i32,
     };
     let monitor = unsafe { MonitorFromRect(&rc, MONITOR_DEFAULTTONULL) };
-    monitor != 0
+    let visible = monitor != 0;
+    log_startup(&format!(
+        "MonitorFromRect(left={}, top={}, right={}, bottom={}) => monitor={:#x}, visible={}",
+        rc.left, rc.top, rc.right, rc.bottom, monitor, visible
+    ));
+    visible
 }
 
 #[cfg(not(windows))]
@@ -81,6 +96,12 @@ fn main() -> eframe::Result<()> {
     let initial_file = load_initial_file();
     let cfg = config::AppConfig::load();
 
+    log_startup("========== mdedit startup ==========");
+    log_startup(&format!(
+        "config: x={:?}, y={:?}, w={:?}, h={:?}, maximized={}",
+        cfg.window_x, cfg.window_y, cfg.window_width, cfg.window_height, cfg.maximized
+    ));
+
     let mut viewport = egui::ViewportBuilder::default()
         .with_min_inner_size([600.0, 400.0]);
 
@@ -90,8 +111,13 @@ fn main() -> eframe::Result<()> {
 
     if let (Some(x), Some(y)) = (cfg.window_x, cfg.window_y) {
         if is_position_visible(x, y, w, h) {
+            log_startup(&format!("applying position: ({}, {}), inner_size: ({}, {})", x, y, w, h));
             viewport = viewport.with_position([x, y]);
+        } else {
+            log_startup("position NOT visible, using system default");
         }
+    } else {
+        log_startup("no saved position, using system default");
     }
     if cfg.maximized {
         viewport = viewport.with_maximized(true);

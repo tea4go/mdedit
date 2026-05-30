@@ -7,6 +7,7 @@ use crate::document::Document;
 use crate::editor::{self, TextBlock};
 use crate::outline::{self, OutlineItem};
 use crate::theme::{Theme, UiTheme, ExtraTheme, CodeStyle, HeadingStyle, QuoteStyle, TableStyle, LinkStyle};
+use crate::toolbar::{self, ToolbarAction, ToolbarState};
 
 const CSS_THEME_DIR: &str =
     r"C:\Users\tony\AppData\Roaming\WhaleTerm\mynotes\files\markdown-theme";
@@ -853,6 +854,87 @@ impl MdEditApp {
         }
     }
 
+    fn handle_toolbar_action(&mut self, action: ToolbarAction, _ctx: &egui::Context) {
+        match action {
+            ToolbarAction::None => {}
+            ToolbarAction::ToggleMode(mode) => {
+                if self.edit_mode != mode {
+                    if mode == EditMode::Raw {
+                        if self.active_block.is_some() {
+                            let snap = self.document.content().to_string();
+                            let blocks = editor::split_blocks(&snap);
+                            self.commit_edit(&blocks);
+                            self.active_block = None;
+                        }
+                    }
+                    self.edit_mode = mode;
+                }
+            }
+            ToolbarAction::Undo => {
+                // TODO: 阶段7集成撤销重做
+            }
+            ToolbarAction::Redo => {
+                // TODO: 阶段7集成撤销重做
+            }
+            ToolbarAction::Bold => self.toggle_format("**"),
+            ToolbarAction::Italic => self.toggle_format("*"),
+            ToolbarAction::Strike => self.toggle_format("~~"),
+            ToolbarAction::InlineCode => self.toggle_format("`"),
+            ToolbarAction::Heading => self.insert_at_line_start("# "),
+            ToolbarAction::Quote => self.insert_at_line_start("> "),
+            ToolbarAction::UnorderedList => self.insert_at_line_start("- "),
+            ToolbarAction::OrderedList => self.insert_at_line_start("1. "),
+            ToolbarAction::CheckList => self.insert_at_line_start("- [ ] "),
+            ToolbarAction::CodeBlock => {
+                self.editing_text = format!("```\n{}\n```", self.editing_text);
+            }
+            ToolbarAction::HorizontalRule => {
+                self.editing_text = format!("{}\n---\n", self.editing_text);
+            }
+            ToolbarAction::Table => {
+                self.editing_text = format!("{}\n|  |  |\n|---|---|\n|  |  |\n", self.editing_text);
+            }
+            ToolbarAction::Link => {
+                self.editing_text = format!("[{}](url)", self.editing_text);
+            }
+            ToolbarAction::ToggleOutline => {
+                self.show_outline = !self.show_outline;
+            }
+            ToolbarAction::ToggleSearch => {
+                // TODO: 阶段5搜索功能
+            }
+            ToolbarAction::Indent => self.insert_at_line_start("    "),
+            ToolbarAction::Outdent => {
+                let text = &mut self.editing_text;
+                if text.starts_with("    ") {
+                    *text = text[4..].to_string();
+                }
+            }
+            ToolbarAction::FontColor | ToolbarAction::BgColor => {
+                // TODO: 阶段8颜色选择器
+            }
+            ToolbarAction::AttachFile => {
+                // TODO: 阶段8附件功能
+            }
+        }
+    }
+
+    fn insert_at_line_start(&mut self, prefix: &str) {
+        if self.active_block.is_some() {
+            let text = &mut self.editing_text;
+            *text = text.lines()
+                .map(|line| {
+                    if line.starts_with(prefix) {
+                        line[prefix.len()..].to_string()
+                    } else {
+                        format!("{}{}", prefix, line)
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+        }
+    }
+
     fn title(&self) -> String {
         let name = self.document.path.as_ref()
             .and_then(|p| p.file_name())
@@ -959,6 +1041,44 @@ impl eframe::App for MdEditApp {
                 });
             });
         });
+
+        // === 编辑器工具栏 (35px) ===
+        let is_dark = matches!(self.effective_mode().1, ThemeMode::Dark);
+        let tb_bg = if is_dark {
+            egui::Color32::from_rgb(0x1D, 0x21, 0x25)
+        } else {
+            egui::Color32::from_rgb(0xF6, 0xF8, 0xFA)
+        };
+        let tb_icon = if is_dark {
+            egui::Color32::from_rgb(0xB9, 0xB9, 0xB9)
+        } else {
+            egui::Color32::from_rgb(0x58, 0x60, 0x69)
+        };
+        let tb_hover = if is_dark {
+            egui::Color32::WHITE
+        } else {
+            egui::Color32::from_rgb(0x42, 0x85, 0xF4)
+        };
+        let tb_sep = egui::Color32::from_rgba_unmultiplied(128, 128, 128, 80);
+
+        let mut toolbar_action = ToolbarAction::None;
+        egui::TopBottomPanel::top("editor_toolbar")
+            .exact_height(35.0)
+            .frame(egui::Frame::default()
+                .fill(tb_bg)
+                .inner_margin(egui::Margin::symmetric(5.0, 5.0)))
+            .show(ctx, |ui| {
+                let tb_state = ToolbarState {
+                    show_outline: self.show_outline,
+                };
+                toolbar_action = toolbar::render_toolbar(
+                    ui, &tb_state, self.edit_mode,
+                    tb_icon, tb_hover, tb_sep,
+                );
+            });
+
+        // 处理工具栏动作
+        self.handle_toolbar_action(toolbar_action, ctx);
 
         // === 三栏布局：Ribbon + 左面板 + 编辑区 ===
         let ribbon_width = 48.0;

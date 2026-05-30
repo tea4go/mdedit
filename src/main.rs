@@ -8,6 +8,7 @@ mod editor;
 mod outline;
 mod renderer;
 mod theme;
+mod toolbar;
 
 use eframe::egui;
 use std::env;

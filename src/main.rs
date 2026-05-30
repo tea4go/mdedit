@@ -132,11 +132,10 @@ fn is_position_visible(x: f32, y: f32, _w: f32, _h: f32) -> bool {
 
 fn load_initial_file() -> Option<(PathBuf, String)> {
     let args: Vec<String> = env::args().collect();
-    if args.len() < 2 {
-        return None;
-    }
+    // 找第一个不以 -- 开头的参数作为文件路径
+    let file_arg = args.iter().skip(1).find(|a| !a.starts_with("--"))?;
 
-    let path = PathBuf::from(&args[1]);
+    let path = PathBuf::from(file_arg);
     match fs::read_to_string(&path) {
         Ok(content) => Some((path, content)),
         Err(e) => {
@@ -177,6 +176,7 @@ fn main() -> eframe::Result<()> {
     }
 
     let initial_file = load_initial_file();
+    let reset = env::args().any(|a| a == "--reset");
     let cfg = config::AppConfig::load();
 
     log_startup("========== mdedit 启动 ==========");
@@ -202,26 +202,31 @@ fn main() -> eframe::Result<()> {
 
     let w = cfg.window_width.unwrap_or(1200.0).max(600.0);
     let h = cfg.window_height.unwrap_or(800.0).max(400.0);
-    viewport = viewport.with_inner_size([w, h]);
 
-    if let (Some(x), Some(y)) = (cfg.window_x, cfg.window_y) {
-        // MonitorFromRect 直接用物理像素坐标
-        if is_position_visible(x, y, w, h) {
-            log_startup(&format!(
-                "恢复窗口位置: ({}, {}), 大小: ({}, {}), scale={}",
-                x, y, w, h, scale
-            ));
-            viewport = viewport.with_position([x, y]);
-        } else {
-            log_startup(&format!(
-                "位置 ({}, {}) 不在可见区域，使用系统默认位置", x, y
-            ));
-        }
+    if reset {
+        log_startup("--reset: 重置窗口到主屏居中");
+        viewport = viewport.with_inner_size([1200.0, 800.0]);
     } else {
-        log_startup("无保存的位置，使用系统默认位置");
-    }
-    if cfg.maximized {
-        viewport = viewport.with_maximized(true);
+        viewport = viewport.with_inner_size([w, h]);
+
+        if let (Some(x), Some(y)) = (cfg.window_x, cfg.window_y) {
+            if is_position_visible(x, y, w, h) {
+                log_startup(&format!(
+                    "恢复窗口位置: ({}, {}), 大小: ({}, {}), scale={}",
+                    x, y, w, h, scale
+                ));
+                viewport = viewport.with_position([x, y]);
+            } else {
+                log_startup(&format!(
+                    "位置 ({}, {}) 不在可见区域，使用系统默认位置", x, y
+                ));
+            }
+        } else {
+            log_startup("无保存的位置，使用系统默认位置");
+        }
+        if cfg.maximized {
+            viewport = viewport.with_maximized(true);
+        }
     }
 
     let options = eframe::NativeOptions {

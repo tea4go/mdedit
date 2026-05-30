@@ -87,6 +87,16 @@ fn load_initial_file() -> Option<(PathBuf, String)> {
 }
 
 fn main() -> eframe::Result<()> {
+    // 声明 Per-Monitor DPI Awareness，避免系统 DPI 虚拟化导致坐标不一致
+    #[cfg(windows)]
+    {
+        extern "system" {
+            fn SetProcessDpiAwarenessContext(value: isize) -> i32;
+        }
+        const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2: isize = -4;
+        unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2); }
+    }
+
     // 调试：输出 CSS 主题解析结果
     if env::args().any(|a| a == "--debug-theme") {
         let name = env::args()
@@ -123,13 +133,13 @@ fn main() -> eframe::Result<()> {
 
     let w = cfg.window_width.unwrap_or(1200.0).max(600.0);
     let h = cfg.window_height.unwrap_or(800.0).max(400.0);
-    viewport = viewport.with_inner_size([w / scale, h / scale]);
+    viewport = viewport.with_inner_size([w, h]);
 
     if let (Some(x), Some(y)) = (cfg.window_x, cfg.window_y) {
         if is_position_visible(x, y, w, h) {
             log_startup(&format!(
                 "applying with_position({}, {}), with_inner_size({}, {})",
-                x, y, w / scale, h / scale
+                x, y, w, h
             ));
             viewport = viewport.with_position([x, y]);
         } else {

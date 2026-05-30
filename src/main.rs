@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 mod app;
+mod auto_save;
 mod config;
 mod css_loader;
 mod document;

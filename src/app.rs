@@ -10,6 +10,7 @@ use crate::theme::{Theme, UiTheme, ExtraTheme, CodeStyle, HeadingStyle, QuoteSty
 use crate::toolbar::{self, ToolbarAction, ToolbarState};
 use crate::file_tree::{self, FileTreeState, FileTreeAction};
 use crate::search::{self, SearchBarState, SearchTreeState};
+use crate::auto_save::AutoSaveState;
 
 const CSS_THEME_DIR: &str =
     r"C:\Users\tony\AppData\Roaming\WhaleTerm\mynotes\files\markdown-theme";
@@ -560,6 +561,10 @@ pub struct MdEditApp {
 
     // 大纲状态
     outline_state: OutlineState,
+
+    // 自动保存
+    auto_save: AutoSaveState,
+    auto_save_current_time: f64,
 }
 
 impl MdEditApp {
@@ -644,6 +649,8 @@ impl MdEditApp {
             search_bar: SearchBarState::new(),
             search_tree: SearchTreeState::new(),
             outline_state: OutlineState::new(),
+            auto_save: AutoSaveState::new(),
+            auto_save_current_time: 0.0,
         }
     }
 
@@ -820,6 +827,13 @@ impl MdEditApp {
     fn new_file(&mut self) {
         self.document = Document::new();
         self.outline_items.clear();
+    }
+
+    fn mark_modified(&mut self) {
+        self.document.modified = true;
+        if self.auto_save_current_time > 0.0 {
+            self.auto_save.on_edit(self.auto_save_current_time);
+        }
     }
 
     fn open_file(&mut self) {
@@ -1005,6 +1019,17 @@ impl eframe::App for MdEditApp {
         self.handle_shortcuts(ctx);
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(self.title()));
 
+        // 自动保存检查
+        let current_time = ctx.input(|i| i.time);
+        if current_time > 0.0 && self.auto_save.check(current_time) && self.document.modified {
+            if let Some(ref path) = self.document.path {
+                if std::fs::write(path, self.document.content()).is_ok() {
+                    self.document.modified = false;
+                }
+            }
+        }
+        self.auto_save_current_time = current_time;
+
         // === 菜单栏（保留在顶部，用于文件/视图操作） ===
         let menu_bg = self.ui_theme.menu_bg;
         let menu_text = self.ui_theme.menu_text;
@@ -1145,7 +1170,7 @@ impl eframe::App for MdEditApp {
                         let (start, end) = matches[idx];
                         let new_content = format!("{}{}{}", &content[..start], self.search_bar.replace_text, &content[end..]);
                         *self.document.buffer.as_mut_string() = new_content;
-                        self.document.modified = true;
+                        self.mark_modified();
                         self.search_bar.count_matches(self.document.content());
                     }
                 }
@@ -1165,7 +1190,7 @@ impl eframe::App for MdEditApp {
                                 .unwrap_or(content)
                         };
                         *self.document.buffer.as_mut_string() = new_content;
-                        self.document.modified = true;
+                        self.mark_modified();
                         self.search_bar.count_matches(self.document.content());
                     }
                 }
@@ -1619,7 +1644,7 @@ impl MdEditApp {
                     .hint_text("输入 Markdown..."),
             );
             if resp.changed() {
-                self.document.modified = true;
+                self.mark_modified();
                 self.outline_items = outline::extract_outline(self.document.content());
             }
             return;
@@ -1689,7 +1714,7 @@ impl MdEditApp {
                 }
                 let new_content = new_lines.join("\n");
                 *self.document.buffer.as_mut_string() = new_content;
-                self.document.modified = true;
+                self.mark_modified();
             }
         }
     }
@@ -1707,7 +1732,7 @@ impl MdEditApp {
                 .hint_text("输入 Markdown..."),
         );
         if resp.changed() {
-            self.document.modified = true;
+            self.mark_modified();
             self.outline_items = outline::extract_outline(self.document.content());
         }
     }

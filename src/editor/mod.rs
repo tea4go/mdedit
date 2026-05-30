@@ -159,11 +159,24 @@ fn is_table_separator(line: &str) -> bool {
 pub fn render_rich_block(ui: &mut egui::Ui, block: &TextBlock, theme: &Theme) {
     match &block.kind {
         BlockKind::Heading(level) => {
+            let idx = (*level as usize - 1).min(5);
             let text = block.source.trim_start_matches('#').trim_start();
-            let size = theme.heading_sizes[(*level as usize - 1).min(5)];
-            ui.label(egui::RichText::new(text).size(size).strong());
-            if *level <= 2 {
-                ui.separator();
+            let size = theme.heading.sizes[idx];
+            let color = theme.heading.colors[idx];
+            let mut rt = egui::RichText::new(text).size(size).color(color);
+            if theme.heading.bold {
+                rt = rt.strong();
+            }
+            ui.label(rt);
+            if let Some(sep_color) = theme.heading.separator_colors[idx] {
+                let rect = ui.available_rect_before_wrap();
+                let y = rect.min.y;
+                let stroke = egui::Stroke::new(
+                    if idx == 0 { 2.0 } else { 1.0 },
+                    sep_color,
+                );
+                ui.painter().hline(rect.x_range(), y, stroke);
+                ui.add_space(4.0);
             }
         }
         BlockKind::Paragraph => {
@@ -176,14 +189,15 @@ pub fn render_rich_block(ui: &mut egui::Ui, block: &TextBlock, theme: &Theme) {
                 .collect::<Vec<_>>()
                 .join("\n");
             egui::Frame::default()
-                .fill(theme.code_bg)
-                .rounding(4.0)
-                .inner_margin(8.0)
+                .fill(theme.code.block_bg)
+                .rounding(theme.code.block_rounding)
+                .inner_margin(theme.code.block_padding)
                 .show(ui, |ui| {
                     ui.label(
                         egui::RichText::new(&code)
                             .monospace()
-                            .color(theme.text_color),
+                            .size(theme.font.monospace_size)
+                            .color(theme.code.block_text),
                     );
                 });
         }
@@ -193,16 +207,22 @@ pub fn render_rich_block(ui: &mut egui::Ui, block: &TextBlock, theme: &Theme) {
                 .collect::<Vec<_>>()
                 .join("\n");
             ui.horizontal(|ui| {
-                ui.add_space(4.0);
                 let (rect, _) = ui.allocate_exact_size(
-                    egui::vec2(3.0, 16.0),
+                    egui::vec2(theme.quote.bar_width, ui.available_height().max(18.0)),
                     egui::Sense::hover(),
                 );
-                ui.painter().rect_filled(rect, 0.0, theme.quote_bar_color);
-                ui.add_space(8.0);
-                ui.label(
-                    egui::RichText::new(&text).italics().color(theme.muted_color),
-                );
+                ui.painter().rect_filled(rect, 0.0, theme.quote.bar_color);
+                ui.add_space(theme.quote.padding);
+                egui::Frame::default()
+                    .fill(theme.quote.bg_color)
+                    .inner_margin(4.0)
+                    .show(ui, |ui| {
+                        ui.label(
+                            egui::RichText::new(&text)
+                                .italics()
+                                .color(theme.quote.text_color),
+                        );
+                    });
             });
         }
         BlockKind::List(ordered) => {
@@ -214,15 +234,18 @@ pub fn render_rich_block(ui: &mut egui::Ui, block: &TextBlock, theme: &Theme) {
                         .trim_start()
                 };
                 ui.horizontal(|ui| {
-                    ui.add_space(16.0);
+                    ui.add_space(theme.list.indent);
                     let marker = if *ordered {
                         format!("{}.", i + 1)
                     } else {
                         "\u{2022}".to_string()
                     };
-                    ui.label(&marker);
-                    ui.label(text);
+                    ui.label(
+                        egui::RichText::new(&marker).color(theme.list.marker_color),
+                    );
+                    render_inline(ui, text, theme);
                 });
+                ui.add_space(theme.list.spacing);
             }
         }
         BlockKind::Table => {
@@ -239,16 +262,23 @@ pub fn render_rich_block(ui: &mut egui::Ui, block: &TextBlock, theme: &Theme) {
             if !rows.is_empty() {
                 let col_count = rows[0].len();
                 egui::Grid::new(format!("table_{}", block.start_line))
-                    .striped(true)
                     .min_col_width(60.0)
+                    .spacing(egui::vec2(theme.table.cell_padding, 2.0))
                     .show(ui, |ui| {
                         for (row_idx, row) in rows.iter().enumerate() {
                             for col_idx in 0..col_count {
                                 let cell = row.get(col_idx).unwrap_or(&"");
                                 if row_idx == 0 {
-                                    ui.label(egui::RichText::new(*cell).strong());
+                                    ui.label(
+                                        egui::RichText::new(*cell)
+                                            .strong()
+                                            .color(theme.table.header_text),
+                                    );
                                 } else {
-                                    ui.label(*cell);
+                                    ui.label(
+                                        egui::RichText::new(*cell)
+                                            .color(theme.base.text),
+                                    );
                                 }
                             }
                             ui.end_row();
@@ -257,7 +287,14 @@ pub fn render_rich_block(ui: &mut egui::Ui, block: &TextBlock, theme: &Theme) {
             }
         }
         BlockKind::Rule => {
-            ui.separator();
+            let rect = ui.available_rect_before_wrap();
+            let y = rect.center().y;
+            ui.painter().hline(
+                rect.x_range(),
+                y,
+                egui::Stroke::new(theme.rule.thickness, theme.rule.color),
+            );
+            ui.add_space(theme.rule.thickness + 8.0);
         }
         BlockKind::Empty => {
             ui.add_space(8.0);
@@ -265,11 +302,15 @@ pub fn render_rich_block(ui: &mut egui::Ui, block: &TextBlock, theme: &Theme) {
     }
 }
 
-fn render_inline(ui: &mut egui::Ui, text: &str, _theme: &Theme) {
+fn render_inline(ui: &mut egui::Ui, text: &str, theme: &Theme) {
     let mut job = egui::text::LayoutJob::default();
     let mut chars = text.chars().peekable();
     let mut current = String::new();
-    let default_fmt = egui::TextFormat::default();
+    let default_fmt = egui::TextFormat {
+        font_id: egui::FontId::proportional(theme.font.base_size),
+        color: theme.base.text,
+        ..Default::default()
+    };
 
     while let Some(ch) = chars.next() {
         if ch == '*' && chars.peek() == Some(&'*') {
@@ -292,13 +333,8 @@ fn render_inline(ui: &mut egui::Ui, text: &str, _theme: &Theme) {
                 }
             }
             let mut fmt = default_fmt.clone();
-            fmt.font_id = egui::FontId::proportional(14.0);
-            fmt.font_id = egui::FontId::new(14.0, egui::FontFamily::Proportional);
-            job.append(&bold_text, 0.0, egui::TextFormat {
-                font_id: egui::FontId::proportional(14.0),
-                color: default_fmt.color,
-                ..Default::default()
-            });
+            fmt.font_id = egui::FontId::proportional(theme.font.base_size);
+            job.append(&bold_text, 0.0, fmt);
         } else if ch == '*' {
             if !current.is_empty() {
                 job.append(&current, 0.0, default_fmt.clone());
@@ -313,9 +349,9 @@ fn render_inline(ui: &mut egui::Ui, text: &str, _theme: &Theme) {
                 italic_text.push(chars.next().unwrap());
             }
             job.append(&italic_text, 0.0, egui::TextFormat {
-                font_id: egui::FontId::proportional(14.0),
+                font_id: egui::FontId::proportional(theme.font.base_size),
                 italics: true,
-                color: default_fmt.color,
+                color: theme.base.text,
                 ..Default::default()
             });
         } else if ch == '`' {
@@ -332,11 +368,45 @@ fn render_inline(ui: &mut egui::Ui, text: &str, _theme: &Theme) {
                 code_text.push(chars.next().unwrap());
             }
             job.append(&code_text, 0.0, egui::TextFormat {
-                font_id: egui::FontId::monospace(13.0),
-                background: egui::Color32::from_gray(50),
-                color: egui::Color32::from_gray(230),
+                font_id: egui::FontId::monospace(theme.font.monospace_size),
+                background: theme.code.inline_bg,
+                color: theme.code.inline_text,
                 ..Default::default()
             });
+        } else if ch == '[' {
+            let mut link_text = String::new();
+            let mut found_link = false;
+            while let Some(&c) = chars.peek() {
+                if c == ']' {
+                    chars.next();
+                    if chars.peek() == Some(&'(') {
+                        chars.next();
+                        while let Some(&u) = chars.peek() {
+                            if u == ')' { chars.next(); break; }
+                            chars.next();
+                        }
+                        found_link = true;
+                    }
+                    break;
+                }
+                link_text.push(chars.next().unwrap());
+            }
+            if found_link {
+                if !current.is_empty() {
+                    job.append(&current, 0.0, default_fmt.clone());
+                    current.clear();
+                }
+                job.append(&link_text, 0.0, egui::TextFormat {
+                    font_id: egui::FontId::proportional(theme.font.base_size),
+                    color: theme.link.color,
+                    underline: egui::Stroke::new(1.0, theme.link.color),
+                    ..Default::default()
+                });
+            } else {
+                current.push('[');
+                current.push_str(&link_text);
+                current.push(']');
+            }
         } else {
             current.push(ch);
         }

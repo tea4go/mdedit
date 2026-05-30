@@ -130,10 +130,35 @@ fn is_position_visible(x: f32, y: f32, _w: f32, _h: f32) -> bool {
     x >= 0.0 && y >= 0.0 && x < 5000.0 && y < 3000.0
 }
 
+fn parse_setpos() -> Option<(f32, f32)> {
+    let args: Vec<String> = env::args().collect();
+    let pos = args.iter().position(|a| a == "--setpos")?;
+    let val = args.get(pos + 1)?;
+    let parts: Vec<&str> = val.split(',').collect();
+    if parts.len() == 2 {
+        let x = parts[0].trim().parse::<f32>().ok()?;
+        let y = parts[1].trim().parse::<f32>().ok()?;
+        Some((x, y))
+    } else {
+        None
+    }
+}
+
 fn load_initial_file() -> Option<(PathBuf, String)> {
     let args: Vec<String> = env::args().collect();
-    // 找第一个不以 -- 开头的参数作为文件路径
-    let file_arg = args.iter().skip(1).find(|a| !a.starts_with("--"))?;
+    // 跳过 --xxx 参数及其值（如 --setpos 3840,222、--debug-theme light）
+    let mut skip_next = false;
+    let file_arg = args.iter().skip(1).find(|a| {
+        if skip_next {
+            skip_next = false;
+            return false;
+        }
+        if *a == "--setpos" || *a == "--debug-theme" {
+            skip_next = true;
+            return false;
+        }
+        !a.starts_with("--")
+    })?;
 
     let path = PathBuf::from(file_arg);
     match fs::read_to_string(&path) {
@@ -177,6 +202,7 @@ fn main() -> eframe::Result<()> {
 
     let initial_file = load_initial_file();
     let reset = env::args().any(|a| a == "--reset");
+    let setpos = parse_setpos();
     let cfg = config::AppConfig::load();
 
     log_startup("========== mdedit 启动 ==========");
@@ -202,6 +228,10 @@ fn main() -> eframe::Result<()> {
     if reset {
         log_startup("--reset: 重置窗口到主屏居中");
         viewport = viewport.with_inner_size([1200.0, 800.0]);
+    } else if let Some((x, y)) = setpos {
+        log_startup(&format!("--setpos: 设置窗口位置为 ({}, {})", x, y));
+        viewport = viewport.with_inner_size([w, h]);
+        viewport = viewport.with_position([x, y]);
     } else {
         viewport = viewport.with_inner_size([w, h]);
 

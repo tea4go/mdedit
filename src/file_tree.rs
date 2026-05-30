@@ -273,8 +273,19 @@ pub fn render_file_tree(
                     } else {
                         ui.add_space(font_size * 0.7 + 6.0);
                     }
-                    let icon = if item_is_dir { "\u{1F4C1}" } else { "\u{1F4C4}" };
-                    ui.label(egui::RichText::new(icon).size(font_size));
+                    // 图标 - 文件夹用彩色图标，文件用蓝色图标
+                    let dir_color = egui::Color32::from_rgba_unmultiplied(0xFF, 0xCE, 0x78, 191);
+                    let file_color = egui::Color32::from_rgba_unmultiplied(0x7E, 0xAD, 0xE2, 200);
+                    let (icon, icon_color) = if item_is_dir {
+                        if item_expanded && item_has_children {
+                            ("\u{1F4C2}", dir_color) // 打开的文件夹
+                        } else {
+                            ("\u{1F4C1}", dir_color) // 关闭的文件夹
+                        }
+                    } else {
+                        ("\u{1F4C4}", file_color)
+                    };
+                    ui.label(egui::RichText::new(icon).size(font_size).color(icon_color));
                     let name_color = if is_selected { active_text } else {
                         egui::Color32::from_rgba_unmultiplied(text_color.r(), text_color.g(), text_color.b(), if item_is_dir { 255 } else { 230 })
                     };

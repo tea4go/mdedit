@@ -43,10 +43,10 @@ struct ToolbarButton {
 
 fn toolbar_buttons() -> Vec<ToolbarButton> {
     vec![
-        // 模式切换
-        ToolbarButton { label: "SV", tooltip: "源码编辑", action: ToolbarAction::ToggleMode(EditMode::Raw), width: 28.0 },
-        ToolbarButton { label: "IR", tooltip: "即时渲染", action: ToolbarAction::ToggleMode(EditMode::Preview), width: 28.0 },
-        // 分隔线（action=None 表示分隔线）
+        // 模式切换 - 中文文字标签，对齐原版截图
+        ToolbarButton { label: "SV", tooltip: "原始编辑", action: ToolbarAction::ToggleMode(EditMode::Raw), width: 30.0 },
+        ToolbarButton { label: "IR", tooltip: "即时渲染", action: ToolbarAction::ToggleMode(EditMode::Preview), width: 30.0 },
+        // 分隔线
         ToolbarButton { label: "|", tooltip: "", action: ToolbarAction::None, width: 8.0 },
         // 撤销/重做
         ToolbarButton { label: "\u{21A9}", tooltip: "撤销", action: ToolbarAction::Undo, width: 25.0 },

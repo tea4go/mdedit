@@ -6,8 +6,16 @@ pub struct OutlineItem {
 
 pub fn extract_outline(content: &str) -> Vec<OutlineItem> {
     let mut items = Vec::new();
+    let mut in_code_block = false;
     for (line_idx, line) in content.lines().enumerate() {
         let trimmed = line.trim_start();
+        if trimmed.starts_with("```") {
+            in_code_block = !in_code_block;
+            continue;
+        }
+        if in_code_block {
+            continue;
+        }
         if trimmed.starts_with('#') {
             let level = trimmed.chars().take_while(|&c| c == '#').count();
             if level <= 6 {
@@ -101,14 +109,9 @@ impl OutlineState {
         (level - 1) as f32 * (font_size + 6.0)
     }
 
-    /// 返回大纲项的字号
-    pub fn font_size(&self, level: u8, base_size: f32) -> f32 {
-        match level {
-            1 => base_size + 3.0,
-            2 => base_size + 2.0,
-            3 => base_size + 1.0,
-            _ => base_size,
-        }
+    /// 返回大纲项的字号，统一使用 base_size 保证左对齐整齐
+    pub fn font_size(&self, _level: u8, base_size: f32) -> f32 {
+        base_size
     }
 
     /// 返回大纲项的字重

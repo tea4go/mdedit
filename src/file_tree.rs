@@ -121,11 +121,22 @@ pub struct FileTreeState {
     pub selected_path: Option<PathBuf>,
     pub data_dir: Option<PathBuf>,
     flat_list: Vec<FlatItem>,
+    pub clipboard_path: Option<PathBuf>,
+    pub clipboard_is_cut: bool,
+    pub clipboard_is_dir: bool,
 }
 
 impl FileTreeState {
     pub fn new() -> Self {
-        Self { root_nodes: Vec::new(), selected_path: None, data_dir: None, flat_list: Vec::new() }
+        Self {
+            root_nodes: Vec::new(),
+            selected_path: None,
+            data_dir: None,
+            flat_list: Vec::new(),
+            clipboard_path: None,
+            clipboard_is_cut: false,
+            clipboard_is_dir: false,
+        }
     }
 
     pub fn set_data_dir(&mut self, dir: PathBuf) {
@@ -214,6 +225,12 @@ pub enum FileTreeAction {
     Delete(PathBuf),
     Rename(PathBuf),
     Refresh,
+    Cut(PathBuf),
+    Copy(PathBuf),
+    Paste(PathBuf),
+    ImportMarkdown(PathBuf),
+    SearchContent,
+    OpenAiChat,
 }
 
 pub struct FileTreeResult {
@@ -231,7 +248,7 @@ pub fn render_file_tree(
     font_size: f32,
 ) -> FileTreeResult {
     let mut result = FileTreeResult { clicked_file: None, action: FileTreeAction::None };
-    let row_height = font_size * 3.0 - 4.0;
+    let row_height = font_size * 2.8;
 
     egui::ScrollArea::vertical()
         .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
@@ -247,99 +264,203 @@ pub fn render_file_tree(
                 let item_expanded = item.expanded;
                 let item_name = item.name.clone();
 
-                let row_rect = ui.available_rect_before_wrap();
-                let row_rect = egui::Rect::from_min_size(
-                    row_rect.min,
+                let row_response = ui.allocate_response(
                     egui::vec2(ui.available_width(), row_height),
+                    egui::Sense::click(),
                 );
-                let response = ui.interact(row_rect, ui.id().with(idx), egui::Sense::click());
+                let row_rect = row_response.rect;
 
+                if row_response.hovered() {
+                    ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
+                }
                 if is_selected {
                     ui.painter().rect_filled(row_rect, 0.0, active_bg);
-                } else if response.hovered() {
+                } else if row_response.hovered() {
                     ui.painter().rect_filled(row_rect, 0.0, hover_bg);
                 }
 
-                ui.horizontal(|ui| {
-                    ui.add_space(indent + 4.0);
-                    if item_is_dir && item_has_children {
-                        let arrow = if item_expanded { "\u{25BC}" } else { "\u{25B6}" };
-                        let arrow_resp = ui.add(egui::Button::new(
-                            egui::RichText::new(arrow).size(font_size * 0.7).color(text_color)
-                        ).frame(false));
-                        if arrow_resp.clicked() {
-                            state.toggle_expand(idx);
-                        }
-                    } else {
-                        ui.add_space(font_size * 0.7 + 6.0);
-                    }
-                    // 图标 - 文件夹用彩色图标，文件用蓝色图标
-                    let dir_color = egui::Color32::from_rgba_unmultiplied(0xFF, 0xCE, 0x78, 191);
-                    let file_color = egui::Color32::from_rgba_unmultiplied(0x7E, 0xAD, 0xE2, 200);
-                    let (icon, icon_color) = if item_is_dir {
-                        if item_expanded && item_has_children {
-                            ("\u{1F4C2}", dir_color) // 打开的文件夹
-                        } else {
-                            ("\u{1F4C1}", dir_color) // 关闭的文件夹
-                        }
-                    } else {
-                        ("\u{1F4C4}", file_color)
-                    };
-                    ui.label(egui::RichText::new(icon).size(font_size).color(icon_color));
-                    let name_color = if is_selected { active_text } else {
-                        egui::Color32::from_rgba_unmultiplied(text_color.r(), text_color.g(), text_color.b(), if item_is_dir { 255 } else { 230 })
-                    };
-                    let name_size = if item_is_dir { font_size + 2.0 } else { font_size };
-                    ui.label(egui::RichText::new(&item_name).size(name_size).color(name_color));
-                });
+                // 绘制行内容
+                let painter = ui.painter();
+                let mut text_x = row_rect.min.x + indent + 4.0;
+                let text_y = row_rect.center().y;
 
-                if response.clicked() {
+                // 展开/折叠箭头
+                if item_is_dir && item_has_children {
+                    let arrow = if item_expanded { "\u{25BC}" } else { "\u{25B6}" };
+                    let arrow_font = egui::FontId::proportional(font_size * 0.7);
+                    let arrow_galley = painter.layout_no_wrap(arrow.to_string(), arrow_font, text_color);
+                    painter.text(egui::pos2(text_x, text_y), egui::Align2::LEFT_CENTER, arrow, egui::FontId::proportional(font_size * 0.7), text_color);
+                    text_x += arrow_galley.size().x + 4.0;
+                    // 箭头点击区域
+                    let arrow_rect = egui::Rect::from_min_size(
+                        egui::pos2(row_rect.min.x + indent + 4.0, row_rect.min.y),
+                        egui::vec2(arrow_galley.size().x + 4.0, row_rect.height()),
+                    );
+                    let arrow_resp = ui.interact(arrow_rect, ui.id().with(("arrow", idx)), egui::Sense::click());
+                    if arrow_resp.clicked() {
+                        state.toggle_expand(idx);
+                    }
+                } else {
+                    text_x += font_size * 0.7 + 10.0;
+                }
+
+                // 图标
+                let dir_color = egui::Color32::from_rgba_unmultiplied(0xFF, 0xCE, 0x78, 191);
+                let file_color = egui::Color32::from_rgba_unmultiplied(0x7E, 0xAD, 0xE2, 200);
+                let (icon, icon_color) = if item_is_dir {
+                    if item_expanded && item_has_children {
+                        ("\u{1F4C2}", dir_color)
+                    } else {
+                        ("\u{1F4C1}", dir_color)
+                    }
+                } else {
+                    ("\u{1F4C4}", file_color)
+                };
+                let icon_font = egui::FontId::proportional(font_size);
+                let icon_galley = painter.layout_no_wrap(icon.to_string(), icon_font.clone(), icon_color);
+                painter.text(egui::pos2(text_x, text_y), egui::Align2::LEFT_CENTER, icon, icon_font, icon_color);
+                text_x += icon_galley.size().x + 4.0;
+
+                // 文件名
+                let name_color = if is_selected { active_text } else {
+                    egui::Color32::from_rgba_unmultiplied(text_color.r(), text_color.g(), text_color.b(), if item_is_dir { 255 } else { 230 })
+                };
+                let name_size = if item_is_dir { font_size + 2.0 } else { font_size };
+                painter.text(
+                    egui::pos2(text_x, text_y),
+                    egui::Align2::LEFT_CENTER,
+                    &item_name,
+                    egui::FontId::proportional(name_size),
+                    name_color,
+                );
+
+                if row_response.clicked() {
                     state.selected_path = Some(item_path.clone());
                     if !item_is_dir {
                         result.clicked_file = Some(item_path.clone());
                     }
                 }
 
-                response.context_menu(|ui| {
+                row_response.context_menu(|ui| {
                     if item_is_dir {
-                        if ui.button("新建文件").clicked() {
+                        // === 文件夹右键菜单 - 对齐 WhaleTerm 原型 ===
+                        if ui.button("展开").clicked() {
+                            state.selected_path = Some(item_path.clone());
+                            ui.close_menu();
+                        }
+                        if ui.button("打开AI聊天").clicked() {
+                            result.action = FileTreeAction::OpenAiChat;
+                            ui.close_menu();
+                        }
+                        ui.separator();
+                        if ui.button("新建文件  Ctrl+N").clicked() {
                             result.action = FileTreeAction::NewFile(item_path.clone());
                             ui.close_menu();
                         }
-                        if ui.button("新建文件夹").clicked() {
+                        if ui.button("导入Markdown").clicked() {
+                            result.action = FileTreeAction::ImportMarkdown(item_path.clone());
+                            ui.close_menu();
+                        }
+                        if ui.button("新建分组").clicked() {
                             result.action = FileTreeAction::NewFolder(item_path.clone());
                             ui.close_menu();
                         }
                         ui.separator();
-                        if ui.button("重命名").clicked() {
+                        if ui.button("剪切  Ctrl+X").clicked() {
+                            result.action = FileTreeAction::Cut(item_path.clone());
+                            ui.close_menu();
+                        }
+                        if ui.button("复制  Ctrl+C").clicked() {
+                            result.action = FileTreeAction::Copy(item_path.clone());
+                            ui.close_menu();
+                        }
+                        let has_clipboard = state.clipboard_path.is_some();
+                        if ui.add_enabled(has_clipboard, egui::Button::new("粘贴  Ctrl+V")).clicked() {
+                            result.action = FileTreeAction::Paste(item_path.clone());
+                            ui.close_menu();
+                        }
+                        ui.separator();
+                        if ui.button("重命名  F2").clicked() {
                             result.action = FileTreeAction::Rename(item_path.clone());
                             ui.close_menu();
                         }
-                        if ui.button("删除").clicked() {
+                        if ui.button("删除  Del").clicked() {
                             result.action = FileTreeAction::Delete(item_path.clone());
                             ui.close_menu();
                         }
                         ui.separator();
-                        if ui.button("在文件管理器中打开").clicked() {
-                            let _ = std::process::Command::new("explorer").arg(&item_path).spawn();
+                        if ui.button("搜索内容").clicked() {
+                            result.action = FileTreeAction::SearchContent;
                             ui.close_menu();
                         }
-                    } else {
-                        if ui.button("打开文件").clicked() {
-                            result.clicked_file = Some(item_path.clone());
-                            ui.close_menu();
-                        }
-                        ui.separator();
-                        if ui.button("删除").clicked() {
-                            result.action = FileTreeAction::Delete(item_path.clone());
-                            ui.close_menu();
-                        }
-                        ui.separator();
                         if ui.button("复制文件路径").clicked() {
                             ui.output_mut(|o| o.copied_text = item_path.to_string_lossy().to_string());
                             ui.close_menu();
                         }
-                        if ui.button("在文件管理器中打开").clicked() {
+                        if ui.button("打开文件位置").clicked() {
+                            let _ = std::process::Command::new("explorer").arg(&item_path).spawn();
+                            ui.close_menu();
+                        }
+                    } else {
+                        // === 文件右键菜单 - 对齐 WhaleTerm 原型 13 项 ===
+                        if ui.button("打开文件").clicked() {
+                            result.clicked_file = Some(item_path.clone());
+                            ui.close_menu();
+                        }
+                        if ui.button("打开AI聊天").clicked() {
+                            result.action = FileTreeAction::OpenAiChat;
+                            ui.close_menu();
+                        }
+                        ui.separator();
+                        if let Some(parent) = item_path.parent() {
+                            if ui.button("新建文件  Ctrl+N").clicked() {
+                                result.action = FileTreeAction::NewFile(parent.to_path_buf());
+                                ui.close_menu();
+                            }
+                            if ui.button("导入Markdown").clicked() {
+                                result.action = FileTreeAction::ImportMarkdown(parent.to_path_buf());
+                                ui.close_menu();
+                            }
+                            if ui.button("新建分组").clicked() {
+                                result.action = FileTreeAction::NewFolder(parent.to_path_buf());
+                                ui.close_menu();
+                            }
+                        }
+                        ui.separator();
+                        if ui.button("剪切  Ctrl+X").clicked() {
+                            result.action = FileTreeAction::Cut(item_path.clone());
+                            ui.close_menu();
+                        }
+                        if ui.button("复制  Ctrl+C").clicked() {
+                            result.action = FileTreeAction::Copy(item_path.clone());
+                            ui.close_menu();
+                        }
+                        if let Some(parent) = item_path.parent() {
+                            let has_clipboard = state.clipboard_path.is_some();
+                            if ui.add_enabled(has_clipboard, egui::Button::new("粘贴  Ctrl+V")).clicked() {
+                                result.action = FileTreeAction::Paste(parent.to_path_buf());
+                                ui.close_menu();
+                            }
+                        }
+                        ui.separator();
+                        if ui.button("重命名文件  F2").clicked() {
+                            result.action = FileTreeAction::Rename(item_path.clone());
+                            ui.close_menu();
+                        }
+                        if ui.button("删除文件  Del").clicked() {
+                            result.action = FileTreeAction::Delete(item_path.clone());
+                            ui.close_menu();
+                        }
+                        ui.separator();
+                        if ui.button("搜索内容").clicked() {
+                            result.action = FileTreeAction::SearchContent;
+                            ui.close_menu();
+                        }
+                        if ui.button("复制文件路径").clicked() {
+                            ui.output_mut(|o| o.copied_text = item_path.to_string_lossy().to_string());
+                            ui.close_menu();
+                        }
+                        if ui.button("打开文件位置").clicked() {
                             if let Some(parent) = item_path.parent() {
                                 let _ = std::process::Command::new("explorer").arg(parent).spawn();
                             }
@@ -354,19 +475,37 @@ pub fn render_file_tree(
             let empty_resp = ui.interact(empty_rect, ui.id().with("empty"), egui::Sense::click());
             let data_dir = state.data_dir.clone();
             empty_resp.context_menu(|ui| {
-                if ui.button("新建文件").clicked() {
+                if ui.button("新建文件  Ctrl+N").clicked() {
                     if let Some(dir) = &data_dir {
                         result.action = FileTreeAction::NewFile(dir.clone());
                     }
                     ui.close_menu();
                 }
-                if ui.button("新建文件夹").clicked() {
+                if ui.button("导入Markdown").clicked() {
+                    if let Some(dir) = &data_dir {
+                        result.action = FileTreeAction::ImportMarkdown(dir.clone());
+                    }
+                    ui.close_menu();
+                }
+                if ui.button("新建分组").clicked() {
                     if let Some(dir) = &data_dir {
                         result.action = FileTreeAction::NewFolder(dir.clone());
                     }
                     ui.close_menu();
                 }
                 ui.separator();
+                let has_clipboard = state.clipboard_path.is_some();
+                if ui.add_enabled(has_clipboard, egui::Button::new("粘贴  Ctrl+V")).clicked() {
+                    if let Some(dir) = &data_dir {
+                        result.action = FileTreeAction::Paste(dir.clone());
+                    }
+                    ui.close_menu();
+                }
+                ui.separator();
+                if ui.button("搜索内容").clicked() {
+                    result.action = FileTreeAction::SearchContent;
+                    ui.close_menu();
+                }
                 if ui.button("刷新").clicked() {
                     result.action = FileTreeAction::Refresh;
                     ui.close_menu();

@@ -3,6 +3,21 @@ use std::path::{Path, PathBuf};
 use eframe::egui;
 use crate::config::AppConfig;
 use crate::css_loader;
+
+fn copy_dir_recursive(src: &Path, dest: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dest)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dest_path = dest.join(entry.file_name());
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dest_path)?;
+        } else {
+            std::fs::copy(&src_path, &dest_path)?;
+        }
+    }
+    Ok(())
+}
 use crate::document::Document;
 use crate::editor::{self, TextBlock};
 use crate::outline::{self, OutlineItem, OutlineState, NumberFormat};
@@ -1250,26 +1265,29 @@ impl eframe::App for MdEditApp {
                     ui.visuals_mut().widgets.active.fg_stroke.color = ribbon_active;
 
                     let tab_color = |active: bool| if active { ribbon_active } else { ribbon_text };
+                    // 目录按钮 - 文件夹图标
                     if ui.add(egui::Button::new(
-                        egui::RichText::new("Dir").size(self.ui_font_size).color(tab_color(self.active_tab == LeftPanelTab::Tree))
+                        egui::RichText::new("\u{1F4C1}").size(self.ui_font_size + 2.0).color(tab_color(self.active_tab == LeftPanelTab::Tree))
                     ).frame(self.active_tab == LeftPanelTab::Tree)).clicked() {
                         self.active_tab = LeftPanelTab::Tree;
                         self.show_outline = true;
                     }
+                    // 大纲按钮 - 导航图标
                     if ui.add(egui::Button::new(
-                        egui::RichText::new("Nav").size(self.ui_font_size).color(tab_color(self.active_tab == LeftPanelTab::Outline))
+                        egui::RichText::new("\u{2630}").size(self.ui_font_size + 2.0).color(tab_color(self.active_tab == LeftPanelTab::Outline))
                     ).frame(self.active_tab == LeftPanelTab::Outline)).clicked() {
                         self.active_tab = LeftPanelTab::Outline;
                         self.show_outline = true;
                     }
+                    // 搜索按钮 - 放大镜图标
                     if ui.add(egui::Button::new(
-                        egui::RichText::new("Find").size(self.ui_font_size).color(tab_color(self.active_tab == LeftPanelTab::Search))
+                        egui::RichText::new("\u{1F50D}").size(self.ui_font_size + 2.0).color(tab_color(self.active_tab == LeftPanelTab::Search))
                     ).frame(self.active_tab == LeftPanelTab::Search)).clicked() {
                         self.active_tab = LeftPanelTab::Search;
                         self.show_outline = true;
                     }
 
-                    ui.add_space(16.0);
+                    ui.add_space(12.0);
 
                     if ui.add(egui::Button::new(
                         egui::RichText::new("+").size(self.ui_font_size + 2.0).color(ribbon_text)
@@ -1371,6 +1389,23 @@ impl eframe::App for MdEditApp {
                                     }
                                 });
                             } else {
+                                // 文件树标题栏 - 显示目录名+操作按钮，对齐原版截图
+                                let dir_name = self.file_tree.data_dir.as_ref()
+                                    .and_then(|p| p.file_name())
+                                    .map(|n| n.to_string_lossy().to_string())
+                                    .unwrap_or_else(|| "目录".to_string());
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new(&dir_name).size(font_size + 2.0).strong().color(tab_text));
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        if ui.add(egui::Button::new(
+                                            egui::RichText::new("\u{1F504}").size(font_size).color(tab_text)
+                                        ).frame(false)).clicked() {
+                                            self.file_tree.refresh();
+                                        }
+                                    });
+                                });
+                                ui.separator();
+
                                 let hover_bg = self.ui_theme.left_list_bg_hover;
                                 let active_bg = self.ui_theme.sidebar_active_bg;
                                 let active_text = self.ui_theme.sidebar_active_text;
@@ -1433,6 +1468,72 @@ impl eframe::App for MdEditApp {
                                     FileTreeAction::Refresh => {
                                         self.file_tree.refresh();
                                     }
+                                    FileTreeAction::Cut(path) => {
+                                        self.file_tree.clipboard_is_dir = path.is_dir();
+                                        self.file_tree.clipboard_path = Some(path);
+                                        self.file_tree.clipboard_is_cut = true;
+                                    }
+                                    FileTreeAction::Copy(path) => {
+                                        self.file_tree.clipboard_is_dir = path.is_dir();
+                                        self.file_tree.clipboard_path = Some(path);
+                                        self.file_tree.clipboard_is_cut = false;
+                                    }
+                                    FileTreeAction::Paste(target_dir) => {
+                                        if let Some(ref src) = self.file_tree.clipboard_path {
+                                            let file_name = src.file_name()
+                                                .map(|n| n.to_string_lossy().to_string())
+                                                .unwrap_or_default();
+                                            let mut dest = target_dir.join(&file_name);
+                                            // 避免同名
+                                            if dest.exists() && dest != *src {
+                                                let stem = dest.file_stem()
+                                                    .map(|s| s.to_string_lossy().to_string())
+                                                    .unwrap_or_default();
+                                                let ext = dest.extension()
+                                                    .map(|e| format!(".{}", e.to_string_lossy()))
+                                                    .unwrap_or_default();
+                                                let mut i = 1;
+                                                while target_dir.join(format!("{}({}){}", stem, i, ext)).exists() {
+                                                    i += 1;
+                                                }
+                                                dest = target_dir.join(format!("{}({}){}", stem, i, ext));
+                                            }
+                                            if dest != *src {
+                                                if self.file_tree.clipboard_is_cut {
+                                                    let _ = std::fs::rename(src, &dest);
+                                                } else {
+                                                    if self.file_tree.clipboard_is_dir {
+                                                        let _ = copy_dir_recursive(src, &dest);
+                                                    } else {
+                                                        let _ = std::fs::copy(src, &dest);
+                                                    }
+                                                }
+                                                self.file_tree.refresh();
+                                            }
+                                        }
+                                    }
+                                    FileTreeAction::ImportMarkdown(dir) => {
+                                        if let Some(path) = rfd::FileDialog::new()
+                                            .add_filter("Markdown", &["md", "markdown"])
+                                            .pick_file()
+                                        {
+                                            let file_name = path.file_name()
+                                                .map(|n| n.to_string_lossy().to_string())
+                                                .unwrap_or_default();
+                                            let dest = dir.join(&file_name);
+                                            if dest != path {
+                                                let _ = std::fs::copy(&path, &dest);
+                                                self.file_tree.refresh();
+                                            }
+                                        }
+                                    }
+                                    FileTreeAction::SearchContent => {
+                                        self.active_tab = LeftPanelTab::Search;
+                                        self.search_tree.query.clear();
+                                    }
+                                    FileTreeAction::OpenAiChat => {
+                                        // TODO: AI 聊天功能
+                                    }
                                     FileTreeAction::None => {}
                                 }
                             }
@@ -1485,24 +1586,37 @@ impl eframe::App for MdEditApp {
                                     let item_font_size = self.outline_state.font_size(item.level, font_size);
                                     let number = self.outline_state.generate_number(&self.outline_items, idx);
 
-                                    ui.horizontal(|ui| {
-                                        ui.add_space(indent + 4.0);
-                                        let label = if number.is_empty() {
-                                            item.title.clone()
-                                        } else {
-                                            format!("{} {}", number, item.title)
-                                        };
-                                        let btn = ui.add_sized(
-                                            [ui.available_width(), row_height],
-                                            egui::Button::new(
-                                                egui::RichText::new(&label).size(item_font_size).color(st)
-                                            ).fill(egui::Color32::TRANSPARENT),
-                                        );
-                                        if btn.clicked() {
-                                            self.scroll_to_line = Some(item.line);
-                                        }
-                                        // 右键菜单
-                                        btn.context_menu(|ui| {
+                                    let label = if number.is_empty() {
+                                        item.title.clone()
+                                    } else {
+                                        format!("{} {}", number, item.title)
+                                    };
+
+                                    let response = ui.allocate_response(
+                                        egui::vec2(ui.available_width(), row_height),
+                                        egui::Sense::click(),
+                                    );
+                                    let row_rect = response.rect;
+
+                                    if response.hovered() {
+                                        ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
+                                        ui.painter().rect_filled(row_rect, 0.0, oh);
+                                    }
+
+                                    let text_x = row_rect.min.x + indent;
+                                    ui.painter().text(
+                                        egui::pos2(text_x, row_rect.center().y),
+                                        egui::Align2::LEFT_CENTER,
+                                        &label,
+                                        egui::FontId::proportional(item_font_size),
+                                        st,
+                                    );
+
+                                    if response.clicked() {
+                                        self.scroll_to_line = Some(item.line);
+                                    }
+                                    // 右键菜单
+                                    response.context_menu(|ui| {
                                             if ui.button("展开到 1 级").clicked() {
                                                 self.outline_state.expand_level = 1;
                                                 ui.close_menu();
@@ -1540,7 +1654,6 @@ impl eframe::App for MdEditApp {
                                                 });
                                             }
                                         });
-                                    });
                                 }
                             });
                         }
@@ -1776,7 +1889,8 @@ impl MdEditApp {
         let content_snapshot = self.document.content().to_string();
         let blocks = editor::split_blocks(&content_snapshot);
 
-        if let Some(target_line) = self.scroll_to_line.take() {
+        let scroll_target = self.scroll_to_line.take();
+        if let Some(target_line) = scroll_target {
             for (idx, block) in blocks.iter().enumerate() {
                 if block.start_line <= target_line && target_line <= block.end_line {
                     self.active_block = Some(idx);
@@ -1809,6 +1923,13 @@ impl MdEditApp {
 
         for (idx, block) in blocks.iter().enumerate() {
             let is_active = self.active_block == Some(idx);
+            let should_scroll = scroll_target.map_or(false, |t| block.start_line <= t && t <= block.end_line);
+
+            // 在 block 渲染前分配锚点用于滚动
+            if should_scroll {
+                let anchor = ui.allocate_response(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover());
+                ui.scroll_to_rect(anchor.rect, Some(egui::Align::TOP));
+            }
 
             if is_active {
                 let resp = ui.add(
@@ -1878,6 +1999,10 @@ impl MdEditApp {
         let font_id = egui::FontId::monospace(self.theme.font.monospace_size);
         let text_color = self.ui_theme.text_color;
         ui.visuals_mut().override_text_color = Some(text_color);
+
+        // raw 模式不支持按行滚动，消费掉避免残留
+        self.scroll_to_line = None;
+
         let resp = ui.add(
             egui::TextEdit::multiline(content)
                 .font(font_id)

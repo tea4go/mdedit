@@ -9,6 +9,7 @@ use crate::outline::{self, OutlineItem};
 use crate::theme::{Theme, UiTheme, ExtraTheme, CodeStyle, HeadingStyle, QuoteStyle, TableStyle, LinkStyle};
 use crate::toolbar::{self, ToolbarAction, ToolbarState};
 use crate::file_tree::{self, FileTreeState, FileTreeAction};
+use crate::search::{self, SearchBarState, SearchTreeState};
 
 const CSS_THEME_DIR: &str =
     r"C:\Users\tony\AppData\Roaming\WhaleTerm\mynotes\files\markdown-theme";
@@ -552,6 +553,10 @@ pub struct MdEditApp {
 
     // 文件树
     file_tree: FileTreeState,
+
+    // 搜索
+    search_bar: SearchBarState,
+    search_tree: SearchTreeState,
 }
 
 impl MdEditApp {
@@ -632,10 +637,9 @@ impl MdEditApp {
             active_tab: LeftPanelTab::Outline,
             left_panel_resizing: false,
 
-            file_tree: {
-                let ft = FileTreeState::new();
-                ft
-            },
+            file_tree: FileTreeState::new(),
+            search_bar: SearchBarState::new(),
+            search_tree: SearchTreeState::new(),
         }
     }
 
@@ -798,6 +802,13 @@ impl MdEditApp {
             }
             if ctx.input(|i| i.key_pressed(egui::Key::I)) {
                 self.toggle_format("*");
+            }
+            if ctx.input(|i| i.key_pressed(egui::Key::F)) {
+                self.search_bar.visible = !self.search_bar.visible;
+                if self.search_bar.visible {
+                    self.search_bar.query.clear();
+                    self.search_bar.total_matches = 0;
+                }
             }
         }
     }
@@ -1095,6 +1106,69 @@ impl eframe::App for MdEditApp {
         // 处理工具栏动作
         self.handle_toolbar_action(toolbar_action, ctx);
 
+        // === 编辑器搜索栏 (浮动) ===
+        let search_action = search::render_search_bar(
+            ctx, &mut self.search_bar,
+            self.ui_theme.content_bg,
+            self.ui_theme.input_border,
+            self.ui_theme.text_color,
+            self.ui_font_size,
+        );
+        match search_action {
+            search::SearchBarAction::QueryChanged => {
+                self.search_bar.count_matches(self.document.content());
+            }
+            search::SearchBarAction::NextMatch => {
+                if self.search_bar.total_matches > 0 {
+                    self.search_bar.current_match = (self.search_bar.current_match + 1) % self.search_bar.total_matches;
+                }
+            }
+            search::SearchBarAction::PrevMatch => {
+                if self.search_bar.total_matches > 0 {
+                    self.search_bar.current_match = if self.search_bar.current_match == 0 {
+                        self.search_bar.total_matches - 1
+                    } else {
+                        self.search_bar.current_match - 1
+                    };
+                }
+            }
+            search::SearchBarAction::Replace => {
+                if !self.search_bar.query.is_empty() {
+                    let content = self.document.content().to_string();
+                    let matches = self.search_bar.matches(&content);
+                    if !matches.is_empty() {
+                        let idx = self.search_bar.current_match.min(matches.len() - 1);
+                        let (start, end) = matches[idx];
+                        let new_content = format!("{}{}{}", &content[..start], self.search_bar.replace_text, &content[end..]);
+                        *self.document.buffer.as_mut_string() = new_content;
+                        self.document.modified = true;
+                        self.search_bar.count_matches(self.document.content());
+                    }
+                }
+            }
+            search::SearchBarAction::ReplaceAll => {
+                if !self.search_bar.query.is_empty() {
+                    let content = self.document.content().to_string();
+                    let matches = self.search_bar.matches(&content);
+                    if !matches.is_empty() {
+                        let new_content = if self.search_bar.case_sensitive {
+                            content.replace(&self.search_bar.query, &self.search_bar.replace_text)
+                        } else {
+                            regex::RegexBuilder::new(&regex::escape(&self.search_bar.query))
+                                .case_insensitive(true)
+                                .build()
+                                .map(|re| re.replace_all(&content, self.search_bar.replace_text.as_str()).to_string())
+                                .unwrap_or(content)
+                        };
+                        *self.document.buffer.as_mut_string() = new_content;
+                        self.document.modified = true;
+                        self.search_bar.count_matches(self.document.content());
+                    }
+                }
+            }
+            search::SearchBarAction::None => {}
+        }
+
         // === 三栏布局：Ribbon + 左面板 + 编辑区 ===
         let ribbon_width = 48.0;
         let min_left_width = 150.0;
@@ -1329,11 +1403,21 @@ impl eframe::App for MdEditApp {
                             });
                         }
                         LeftPanelTab::Search => {
-                            ui.vertical(|ui| {
-                                ui.add_space(8.0);
-                                ui.label(egui::RichText::new("搜索").size(font_size).color(tab_text));
-                                ui.label(egui::RichText::new("（待实现）").size(font_size * 0.9).color(self.ui_theme.sidebar_text));
-                            });
+                            let hover_bg = self.ui_theme.left_list_bg_hover;
+                            let search_result = search::render_search_tree(
+                                ui, &mut self.search_tree,
+                                self.file_tree.data_dir.as_deref(),
+                                self.ui_theme.sidebar_text,
+                                font_size,
+                                hover_bg,
+                            );
+                            if let Some((path, line)) = search_result.open_file {
+                                if let Ok(content) = std::fs::read_to_string(&path) {
+                                    self.document = Document::from_file(path, content);
+                                    self.update_outline();
+                                    self.scroll_to_line = Some(line);
+                                }
+                            }
                         }
                     }
 

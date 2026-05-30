@@ -12,6 +12,7 @@ pulldown-cmark = "0.12"
 syntect = { version = "5.2", default-features = false, features = ["default-fancy"] }
 rfd = "0.15"
 serde_json = "1"
+regex = "1"
 
 [profile.release]
 opt-level = "z"

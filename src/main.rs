@@ -8,6 +8,7 @@ mod editor;
 mod file_tree;
 mod outline;
 mod renderer;
+mod search;
 mod theme;
 mod toolbar;
 

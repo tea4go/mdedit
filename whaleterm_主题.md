@@ -707,5 +707,4 @@ trait ThemeManager {
 1. **颜色传递**: 所有颜色使用 `&str` 或 `Color` 类型，支持 hex 格式（`#RRGGBB`）
 2. **透明度**: 部分扩展色使用 `#RRGGBBAA` 格式（如 `#458CD033`），需要支持 RGBA 解析
 3. **实时切换**: 亮/暗切换时需要通知所有 UI 组件重新读取颜色
-4. **CSS 变量映射**: 如果使用 WebView 渲染部分 UI，需将主题色映射为 CSS 变量
-5. **原生渲染**: GPU 渲染的终端和笔记编辑器直接从 Theme struct 读取颜色，不经过 CSS
+4. **原生渲染**: 终端和笔记编辑器直接从 Theme struct 读取颜色，纯 GPU 渲染

@@ -24,6 +24,13 @@ pub enum EditMode {
     Preview,
 }
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum LeftPanelTab {
+    Tree,
+    Outline,
+    Search,
+}
+
 struct NoteFontConfig {
     family: Vec<String>,
     size: f32,
@@ -535,6 +542,11 @@ pub struct MdEditApp {
     last_maximized: bool,
     target_physical_pos: Option<(f32, f32)>,
     frame_count: u32,
+
+    // 布局状态
+    left_panel_width: f32,
+    active_tab: LeftPanelTab,
+    left_panel_resizing: bool,
 }
 
 impl MdEditApp {
@@ -610,6 +622,10 @@ impl MdEditApp {
             last_maximized: false,
             target_physical_pos,
             frame_count: 0,
+
+            left_panel_width: 250.0,
+            active_tab: LeftPanelTab::Outline,
+            left_panel_resizing: false,
         }
     }
 
@@ -877,6 +893,7 @@ impl eframe::App for MdEditApp {
         self.handle_shortcuts(ctx);
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(self.title()));
 
+        // === 菜单栏（保留在顶部，用于文件/视图操作） ===
         let menu_bg = self.ui_theme.menu_bg;
         let menu_text = self.ui_theme.menu_text;
 
@@ -909,10 +926,6 @@ impl eframe::App for MdEditApp {
                     }
                 });
                 ui.menu_button("视图", |ui| {
-                    if ui.checkbox(&mut self.show_outline, "大纲面板").clicked() {
-                        ui.close_menu();
-                    }
-                    ui.separator();
                     ui.label("主题");
                     let prev_mode = self.theme_mode;
                     ui.radio_value(&mut self.theme_mode, ThemeMode::Light, "浅色");
@@ -947,36 +960,183 @@ impl eframe::App for MdEditApp {
             });
         });
 
+        // === 三栏布局：Ribbon + 左面板 + 编辑区 ===
+        let ribbon_width = 48.0;
+        let min_left_width = 150.0;
+
+        // Ribbon 窄侧栏
+        let ribbon_bg = self.ui_theme.sidebar_bg;
+        let ribbon_text = self.ui_theme.sidebar_text;
+        let ribbon_active = self.ui_theme.text_active_color;
+        let ribbon_hover = self.ui_theme.sidebar_hover_bg;
+        egui::SidePanel::left("ribbon")
+            .exact_width(ribbon_width)
+            .resizable(false)
+            .frame(egui::Frame::none().fill(ribbon_bg))
+            .show(ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.add_space(8.0);
+                    ui.visuals_mut().widgets.inactive.fg_stroke.color = ribbon_text;
+                    ui.visuals_mut().widgets.hovered.fg_stroke.color = ribbon_active;
+                    ui.visuals_mut().widgets.hovered.bg_fill = ribbon_hover;
+                    ui.visuals_mut().widgets.active.fg_stroke.color = ribbon_active;
+
+                    let tab_color = |active: bool| if active { ribbon_active } else { ribbon_text };
+                    if ui.add(egui::Button::new(
+                        egui::RichText::new("Dir").size(self.ui_font_size).color(tab_color(self.active_tab == LeftPanelTab::Tree))
+                    ).frame(self.active_tab == LeftPanelTab::Tree)).clicked() {
+                        self.active_tab = LeftPanelTab::Tree;
+                        self.show_outline = true;
+                    }
+                    if ui.add(egui::Button::new(
+                        egui::RichText::new("Nav").size(self.ui_font_size).color(tab_color(self.active_tab == LeftPanelTab::Outline))
+                    ).frame(self.active_tab == LeftPanelTab::Outline)).clicked() {
+                        self.active_tab = LeftPanelTab::Outline;
+                        self.show_outline = true;
+                    }
+                    if ui.add(egui::Button::new(
+                        egui::RichText::new("Find").size(self.ui_font_size).color(tab_color(self.active_tab == LeftPanelTab::Search))
+                    ).frame(self.active_tab == LeftPanelTab::Search)).clicked() {
+                        self.active_tab = LeftPanelTab::Search;
+                        self.show_outline = true;
+                    }
+
+                    ui.add_space(16.0);
+
+                    if ui.add(egui::Button::new(
+                        egui::RichText::new("+").size(self.ui_font_size + 2.0).color(ribbon_text)
+                    ).frame(false)).clicked() {
+                        self.new_file();
+                    }
+                    if ui.add(egui::Button::new(
+                        egui::RichText::new("...").size(self.ui_font_size).color(ribbon_text)
+                    ).frame(false)).clicked() {
+                        self.open_file();
+                    }
+                });
+            });
+
+        // 可拖拽左面板
         if self.show_outline {
+            let left_bg = self.ui_theme.left_list_bg;
+            let split_color = self.ui_theme.split_color;
+            let tab_text_active = self.ui_theme.text_active_color;
+            let tab_text = self.ui_theme.sidebar_text;
             let font_size = self.theme.font.base_size;
-            let sb = self.ui_theme.sidebar_bg;
-            let st = self.ui_theme.sidebar_text;
-            let oh = self.extra_theme.outline_hover_color;
-            egui::SidePanel::left("outline_panel")
-                .default_width(200.0)
-                .frame(egui::Frame::none().fill(sb))
+
+            egui::SidePanel::left("left_panel")
+                .default_width(self.left_panel_width)
+                .resizable(true)
+                .min_width(min_left_width)
+                .frame(egui::Frame::none().fill(left_bg))
                 .show(ctx, |ui| {
-                    ui.visuals_mut().widgets.noninteractive.fg_stroke.color = st;
-                    ui.visuals_mut().widgets.inactive.fg_stroke.color = st;
-                    ui.visuals_mut().widgets.hovered.bg_fill = oh;
-                    ui.visuals_mut().widgets.hovered.fg_stroke.color = st;
-                    ui.visuals_mut().widgets.active.fg_stroke.color = st;
-                    ui.label(egui::RichText::new("大纲").size(font_size * 1.2).strong().color(st));
-                    ui.separator();
-                    egui::ScrollArea::vertical()
-                        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
-                        .show(ui, |ui| {
-                        for item in &self.outline_items {
-                            let indent = (item.level as f32 - 1.0) * 12.0;
-                            ui.horizontal(|ui| {
-                                ui.add_space(indent);
-                                let btn = ui.add(egui::Button::new(
-                                    egui::RichText::new(&item.title).size(font_size).color(st)
-                                ).fill(egui::Color32::TRANSPARENT));
-                                if btn.clicked() {
-                                    self.scroll_to_line = Some(item.line);
+                    ui.visuals_mut().widgets.noninteractive.fg_stroke.color = tab_text;
+                    ui.visuals_mut().widgets.inactive.fg_stroke.color = tab_text;
+
+                    // Tab 栏 (32px 高)
+                    let tab_bar_rect = ui.allocate_exact_size(
+                        egui::vec2(ui.available_width(), 32.0),
+                        egui::Sense::hover(),
+                    );
+                    let tab_bar_rect = tab_bar_rect.0;
+
+                    // 底边框
+                    ui.painter().line_segment(
+                        [tab_bar_rect.left_bottom(), tab_bar_rect.right_bottom()],
+                        egui::Stroke::new(1.0, split_color),
+                    );
+
+                    // Tab 按钮
+                    let tabs = [
+                        (LeftPanelTab::Tree, "目录"),
+                        (LeftPanelTab::Outline, "大纲"),
+                        (LeftPanelTab::Search, "搜索"),
+                    ];
+                    let tab_font_size = font_size + 3.0;
+                    let mut tab_x = tab_bar_rect.left() + 8.0;
+                    for (tab, label) in &tabs {
+                        let is_active = self.active_tab == *tab;
+                        let galley = ui.painter().layout_no_wrap(
+                            label.to_string(),
+                            egui::FontId::proportional(tab_font_size),
+                            if is_active { tab_text_active } else { tab_text },
+                        );
+                        let text_width = galley.size().x + 12.0;
+                        let text_pos = egui::pos2(tab_x, tab_bar_rect.center().y - galley.size().y / 2.0);
+
+                        let click_rect = egui::Rect::from_min_max(
+                            egui::pos2(tab_x - 4.0, tab_bar_rect.top()),
+                            egui::pos2(tab_x + text_width + 4.0, tab_bar_rect.bottom()),
+                        );
+                        let response = ui.interact(click_rect, ui.id().with(label), egui::Sense::click());
+                        if response.clicked() {
+                            self.active_tab = *tab;
+                        }
+
+                        let color = if is_active { tab_text_active } else { tab_text };
+                        ui.painter().galley(text_pos, galley, color);
+
+                        if is_active {
+                            let indicator_rect = egui::Rect::from_min_max(
+                                egui::pos2(tab_x - 2.0, tab_bar_rect.bottom() - 3.0),
+                                egui::pos2(tab_x + text_width + 2.0, tab_bar_rect.bottom()),
+                            );
+                            ui.painter().rect_filled(indicator_rect, 0.0, tab_text_active);
+                        }
+
+                        tab_x += text_width + 12.0;
+                    }
+
+                    // 内容区域
+                    match self.active_tab {
+                        LeftPanelTab::Tree => {
+                            ui.vertical(|ui| {
+                                ui.add_space(8.0);
+                                ui.label(egui::RichText::new("文件树").size(font_size).color(tab_text));
+                                ui.label(egui::RichText::new("（待实现）").size(font_size * 0.9).color(self.ui_theme.sidebar_text));
+                            });
+                        }
+                        LeftPanelTab::Outline => {
+                            let oh = self.extra_theme.outline_hover_color;
+                            let st = self.ui_theme.sidebar_text;
+                            ui.visuals_mut().widgets.hovered.bg_fill = oh;
+                            ui.visuals_mut().widgets.hovered.fg_stroke.color = st;
+                            ui.visuals_mut().widgets.active.fg_stroke.color = st;
+
+                            egui::ScrollArea::vertical()
+                                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+                                .show(ui, |ui| {
+                                for item in &self.outline_items {
+                                    let indent = (item.level as f32 - 1.0) * 12.0;
+                                    ui.horizontal(|ui| {
+                                        ui.add_space(indent);
+                                        let btn = ui.add(egui::Button::new(
+                                            egui::RichText::new(&item.title).size(font_size).color(st)
+                                        ).fill(egui::Color32::TRANSPARENT));
+                                        if btn.clicked() {
+                                            self.scroll_to_line = Some(item.line);
+                                        }
+                                    });
                                 }
                             });
+                        }
+                        LeftPanelTab::Search => {
+                            ui.vertical(|ui| {
+                                ui.add_space(8.0);
+                                ui.label(egui::RichText::new("搜索").size(font_size).color(tab_text));
+                                ui.label(egui::RichText::new("（待实现）").size(font_size * 0.9).color(self.ui_theme.sidebar_text));
+                            });
+                        }
+                    }
+
+                    // 底部工具栏
+                    ui.separator();
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                        let btn_color = self.ui_theme.text_color;
+                        if ui.add(egui::Button::new(
+                            egui::RichText::new("+ 新建").size(self.ui_font_size).color(btn_color)
+                        ).frame(false)).clicked() {
+                            self.new_file();
                         }
                     });
                 });

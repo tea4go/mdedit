@@ -151,7 +151,7 @@ fn load_initial_file() -> Option<(PathBuf, String)> {
 }
 
 fn main() -> eframe::Result<()> {
-    // 声明 Per-Monitor DPI Awareness，避免系统 DPI 虚拟化导致坐标不一致
+    // 必须在 winit 初始化前声明 DPI Awareness
     #[cfg(windows)]
     {
         extern "system" {
@@ -205,14 +205,17 @@ fn main() -> eframe::Result<()> {
     viewport = viewport.with_inner_size([w, h]);
 
     if let (Some(x), Some(y)) = (cfg.window_x, cfg.window_y) {
+        // MonitorFromRect 直接用物理像素坐标
         if is_position_visible(x, y, w, h) {
             log_startup(&format!(
-                "applying with_position({}, {}), scale={}",
-                x, y, scale
+                "applying with_position({}, {}) [physical=({}, {}), scale={}]",
+                x, y, x, y, scale
             ));
             viewport = viewport.with_position([x, y]);
         } else {
-            log_startup("position NOT visible, using system default");
+            log_startup(&format!(
+                "position NOT visible: ({}, {}), using system default", x, y
+            ));
         }
     } else {
         log_startup("no saved position, using system default");

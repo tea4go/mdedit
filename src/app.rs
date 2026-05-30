@@ -57,6 +57,12 @@ impl MdEditApp {
         };
         let theme = Self::load_css_theme(theme_mode);
 
+        // 设置 egui visuals 匹配主题
+        match theme_mode {
+            ThemeMode::Dark => cc.egui_ctx.set_visuals(egui::Visuals::dark()),
+            ThemeMode::Light => cc.egui_ctx.set_visuals(egui::Visuals::light()),
+        }
+
         Self {
             document,
             outline_items,
@@ -281,6 +287,10 @@ impl eframe::App for MdEditApp {
                     ui.radio_value(&mut self.theme_mode, ThemeMode::Dark, "深色");
                     if self.theme_mode != prev_mode {
                         self.switch_theme(self.theme_mode);
+                        match self.theme_mode {
+                            ThemeMode::Dark => ctx.set_visuals(egui::Visuals::dark()),
+                            ThemeMode::Light => ctx.set_visuals(egui::Visuals::light()),
+                        }
                         ui.close_menu();
                     }
                 });
@@ -308,7 +318,9 @@ impl eframe::App for MdEditApp {
                 });
         }
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default()
+            .frame(egui::Frame::default().fill(self.theme.base.background))
+            .show(ctx, |ui| {
             egui::ScrollArea::vertical()
                 .id_salt("editor_scroll")
                 .show(ui, |ui| {

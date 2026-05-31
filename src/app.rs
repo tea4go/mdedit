@@ -1,9 +1,19 @@
+//! 应用主模块 - MdEditApp 核心逻辑
+//!
+//! 整合所有子模块，管理应用状态、事件处理和界面布局。
+//! 主要职责：
+//! - 初始化主题、字体、编辑模式
+//! - 处理快捷键和工具栏操作
+//! - 管理文档生命周期（新建、打开、保存）
+//! - 渲染三栏布局（Ribbon + 左面板 + 编辑区 + 状态栏）
+
 use std::path::{Path, PathBuf};
 
 use eframe::egui;
 use crate::config::AppConfig;
 use crate::css_loader;
 
+/// 递归复制目录（用于文件树粘贴操作）
 fn copy_dir_recursive(src: &Path, dest: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dest)?;
     for entry in std::fs::read_dir(src)? {
@@ -30,6 +40,7 @@ use crate::auto_save::AutoSaveState;
 const CSS_THEME_DIR: &str =
     r"C:\Users\tony\AppData\Roaming\WhaleTerm\mynotes\files\markdown-theme";
 
+/// 主题模式（浅色/深色/跟随系统）
 #[derive(Clone, Copy, PartialEq)]
 pub enum ThemeMode {
     Light,
@@ -37,31 +48,36 @@ pub enum ThemeMode {
     Auto,
 }
 
+/// 编辑模式（原始编辑/即时渲染预览）
 #[derive(Clone, Copy, PartialEq)]
 pub enum EditMode {
     Raw,
     Preview,
 }
 
+/// 左面板标签页类型
 #[derive(Clone, Copy, PartialEq)]
 pub enum LeftPanelTab {
-    Tree,
-    Outline,
-    Search,
+    Tree,     // 文件目录
+    Outline,  // 大纲导航
+    Search,   // 全文搜索
 }
 
+/// 笔记字体配置（从 WhaleTerm preferences 加载）
 struct NoteFontConfig {
     family: Vec<String>,
     size: f32,
     bold: bool,
 }
 
+/// UI 字体配置（菜单栏等 UI 元素使用）
 struct ConfigFontConfig {
     family: Vec<String>,
     size: f32,
     bold: bool,
 }
 
+/// 在系统字体目录和用户字体目录中查找字体文件数据
 fn find_font_data(font_name: &str) -> Option<Vec<u8>> {
     // Windows 系统字体目录
     let font_dir = std::path::Path::new(r"C:\Windows\Fonts");
@@ -118,6 +134,7 @@ fn find_font_data(font_name: &str) -> Option<Vec<u8>> {
     None
 }
 
+/// 从 WhaleTerm preferences.json 加载笔记字体配置
 fn load_note_font_config() -> NoteFontConfig {
     let path = PathBuf::from(r"C:\Users\tony\AppData\Roaming\WhaleTerm\preferences.json");
     let content = match std::fs::read_to_string(&path) {
@@ -153,6 +170,7 @@ fn load_note_font_config() -> NoteFontConfig {
     NoteFontConfig { family, size, bold }
 }
 
+/// 从 WhaleTerm preferences.json 加载 UI 字体配置
 fn load_config_font_config() -> ConfigFontConfig {
     let path = PathBuf::from(r"C:\Users\tony\AppData\Roaming\WhaleTerm\preferences.json");
     let content = match std::fs::read_to_string(&path) {
@@ -188,6 +206,8 @@ fn load_config_font_config() -> ConfigFontConfig {
     ConfigFontConfig { family, size, bold }
 }
 
+/// 解析十六进制颜色字符串为 egui Color32
+/// 支持 #RGB、#RRGGBB、#RRGGBBAA 格式
 fn parse_hex_color(val: &str) -> Option<egui::Color32> {
     let hex = val.trim().strip_prefix('#')?;
     match hex.len() {
@@ -214,12 +234,14 @@ fn parse_hex_color(val: &str) -> Option<egui::Color32> {
     }
 }
 
+/// 读取 WhaleTerm preferences.json 文件
 fn read_preferences() -> Option<serde_json::Value> {
     let path = PathBuf::from(r"C:\Users\tony\AppData\Roaming\WhaleTerm\preferences.json");
     let content = std::fs::read_to_string(&path).ok()?;
     serde_json::from_str(&content).ok()
 }
 
+/// 从 WhaleTerm preferences.json 加载笔记内容主题
 fn load_note_theme(mode: ThemeMode) -> Option<Theme> {
     let root = read_preferences()?;
     let key = match mode {
@@ -299,6 +321,7 @@ fn load_note_theme(mode: ThemeMode) -> Option<Theme> {
     })
 }
 
+/// 从 WhaleTerm preferences.json 加载应用 UI 主题
 fn load_ui_theme(mode: ThemeMode) -> UiTheme {
     let root = match read_preferences() {
         Some(r) => r,
@@ -386,6 +409,7 @@ fn load_ui_theme(mode: ThemeMode) -> UiTheme {
     }
 }
 
+/// 加载扩展主题（工具栏、大纲等额外样式）
 fn load_extra_theme(mode: ThemeMode) -> ExtraTheme {
     match mode {
         // 文档 5.1 节 - 亮色扩展色
@@ -542,6 +566,7 @@ impl UiTheme {
     }
 }
 
+/// MdEdit 应用主结构体 - 持有所有运行时状态
 pub struct MdEditApp {
     document: Document,
     outline_items: Vec<OutlineItem>,
@@ -586,6 +611,7 @@ pub struct MdEditApp {
 }
 
 impl MdEditApp {
+    /// 创建应用实例 - 初始化主题、字体、编辑模式等
     pub fn new(
         cc: &eframe::CreationContext<'_>,
         initial_file: Option<(PathBuf, String)>,
@@ -673,6 +699,7 @@ impl MdEditApp {
         }
     }
 
+    /// 配置字体 - 加载笔记字体和 UI 字体，回退到系统 CJK 字体
     fn configure_fonts(ctx: &egui::Context, note_font: &NoteFontConfig, config_font: &ConfigFontConfig) {
         let mut fonts = egui::FontDefinitions::default();
 
@@ -747,6 +774,7 @@ impl MdEditApp {
         ctx.set_fonts(fonts);
     }
 
+    /// 从 CSS 文件加载主题（WhaleTerm 主题目录下的 light.css / dark.css）
     fn load_css_theme(mode: ThemeMode) -> Theme {
         let filename = match mode {
             ThemeMode::Light | ThemeMode::Auto => "light.css",
@@ -761,6 +789,7 @@ impl MdEditApp {
         })
     }
 
+    /// 检测系统是否为深色模式（仅 Windows，通过注册表查询）
     fn is_system_dark() -> bool {
         let output = std::process::Command::new("powershell")
             .args(["-NoProfile", "-Command",
@@ -775,6 +804,7 @@ impl MdEditApp {
         }
     }
 
+    /// 获取实际生效的主题模式（Auto 模式下根据系统设置决定）
     fn effective_mode(&self) -> (ThemeMode, ThemeMode) {
         match self.theme_mode {
             ThemeMode::Auto => {
@@ -785,6 +815,7 @@ impl MdEditApp {
         }
     }
 
+    /// 切换主题模式并重新加载所有主题相关资源
     fn switch_theme(&mut self, mode: ThemeMode) {
         self.theme_mode = mode;
         let effective = match mode {
@@ -806,10 +837,12 @@ impl MdEditApp {
         self.extra_theme = load_extra_theme(effective);
     }
 
+    /// 更新大纲内容（文档变更后调用）
     fn update_outline(&mut self) {
         self.outline_items = outline::extract_outline(self.document.content());
     }
 
+    /// 处理全局快捷键（Ctrl+S/O/N/B/I/F/E/+/- 等）
     fn handle_shortcuts(&mut self, ctx: &egui::Context) {
         let ctrl = ctx.input(|i| i.modifiers.ctrl);
         let shift = ctx.input(|i| i.modifiers.shift);
@@ -869,11 +902,13 @@ impl MdEditApp {
         }
     }
 
+    /// 新建空白文档
     fn new_file(&mut self) {
         self.document = Document::new();
         self.outline_items.clear();
     }
 
+    /// 标记文档已修改并触发自动保存计时
     fn mark_modified(&mut self) {
         self.document.modified = true;
         if self.auto_save_current_time > 0.0 {
@@ -881,6 +916,7 @@ impl MdEditApp {
         }
     }
 
+    /// 打开文件（通过系统文件选择对话框）
     fn open_file(&mut self) {
         if let Some(path) = rfd::FileDialog::new()
             .add_filter("Markdown", &["md", "markdown"])
@@ -899,6 +935,7 @@ impl MdEditApp {
         }
     }
 
+    /// 保存文件（未关联路径时弹出另存为对话框）
     fn save_file(&mut self) {
         let path = if let Some(ref p) = self.document.path {
             p.clone()
@@ -919,6 +956,7 @@ impl MdEditApp {
         }
     }
 
+    /// 另存为（始终弹出文件选择对话框）
     fn save_file_as(&mut self) {
         if let Some(path) = rfd::FileDialog::new()
             .add_filter("Markdown", &["md", "markdown"])
@@ -931,6 +969,7 @@ impl MdEditApp {
         }
     }
 
+    /// 切换行内格式标记（加粗/斜体/删除线/行内代码）
     fn toggle_format(&mut self, marker: &str) {
         if let Some(_idx) = self.active_block {
             let text = &mut self.editing_text;
@@ -943,6 +982,7 @@ impl MdEditApp {
         }
     }
 
+    /// 处理工具栏按钮操作
     fn handle_toolbar_action(&mut self, action: ToolbarAction, _ctx: &egui::Context) {
         match action {
             ToolbarAction::None => {}
@@ -1008,6 +1048,7 @@ impl MdEditApp {
         }
     }
 
+    /// 在当前编辑块每行首插入/移除前缀
     fn insert_at_line_start(&mut self, prefix: &str) {
         if self.active_block.is_some() {
             let text = &mut self.editing_text;
@@ -1024,6 +1065,7 @@ impl MdEditApp {
         }
     }
 
+    /// 生成窗口标题（文件名 + 修改标记 + 应用名）
     fn title(&self) -> String {
         let name = self.document.path.as_ref()
             .and_then(|p| p.file_name())
@@ -1858,6 +1900,7 @@ impl eframe::App for MdEditApp {
 }
 
 impl MdEditApp {
+    /// 保存应用配置到 config.ini（窗口位置/大小/主题/编辑模式）
     fn save_config(&self) {
         let cfg = AppConfig {
             window_x: self.last_window_pos.map(|(x, _)| x),
@@ -1880,6 +1923,7 @@ impl MdEditApp {
 }
 
 impl MdEditApp {
+    /// 渲染编辑器主区域（预览模式：富文本块 + 可点击编辑；原始模式：纯文本）
     fn render_editor(&mut self, ui: &mut egui::Ui) {
         if self.edit_mode == EditMode::Raw {
             self.render_raw_editor(ui);
@@ -1973,6 +2017,7 @@ impl MdEditApp {
         }
     }
 
+    /// 提交当前编辑块的修改到文档缓冲区
     fn commit_edit(&mut self, blocks: &[TextBlock]) {
         if let Some(idx) = self.active_block {
             if idx < blocks.len() {
@@ -1994,6 +2039,7 @@ impl MdEditApp {
         }
     }
 
+    /// 渲染原始编辑模式（纯 Markdown 文本编辑器）
     fn render_raw_editor(&mut self, ui: &mut egui::Ui) {
         let content = self.document.buffer.as_mut_string();
         let font_id = egui::FontId::monospace(self.theme.font.monospace_size);

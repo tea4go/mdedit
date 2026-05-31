@@ -258,11 +258,16 @@ pub enum FileTreeAction {
     OpenAiChat,
 }
 
+/// 文件树操作结果
 pub struct FileTreeResult {
+    /// 用户点击的文件路径
     pub clicked_file: Option<PathBuf>,
+    /// 触发的操作
     pub action: FileTreeAction,
 }
 
+/// 渲染文件树 UI
+/// 包含行绘制、图标、右键菜单等，返回用户操作结果
 pub fn render_file_tree(
     ui: &mut egui::Ui,
     state: &mut FileTreeState,

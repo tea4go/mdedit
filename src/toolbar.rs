@@ -1,7 +1,12 @@
+//! 工具栏组件模块 - 提供编辑器顶部的格式化工具栏
+//!
+//! 包含模式切换、撤销重做、标题、加粗、斜体、列表、代码块、表格等按钮。
+
 use eframe::egui;
 
 use crate::app::EditMode;
 
+/// 工具栏操作类型
 #[derive(Clone, Copy, PartialEq)]
 pub enum ToolbarAction {
     None,
@@ -30,17 +35,25 @@ pub enum ToolbarAction {
     ToggleSearch,
 }
 
+/// 工具栏状态
 pub struct ToolbarState {
+    /// 是否显示大纲面板
     pub show_outline: bool,
 }
 
+/// 工具栏按钮定义
 struct ToolbarButton {
+    /// 按钮显示文字
     label: &'static str,
+    /// 鼠标悬停提示
     tooltip: &'static str,
+    /// 点击触发的操作
     action: ToolbarAction,
+    /// 按钮宽度
     width: f32,
 }
 
+/// 获取工具栏按钮配置列表
 fn toolbar_buttons() -> Vec<ToolbarButton> {
     vec![
         // 模式切换 - 中文文字标签，对齐原版截图
@@ -86,6 +99,8 @@ fn toolbar_buttons() -> Vec<ToolbarButton> {
     ]
 }
 
+/// 渲染编辑器工具栏
+/// 返回用户点击的工具栏操作
 pub fn render_toolbar(
     ui: &mut egui::Ui,
     state: &ToolbarState,

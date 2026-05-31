@@ -1,1 +1,1 @@
-// Inline rendering utilities - reserved for future rich inline parsing
+// 行内渲染工具 - 预留用于未来的富文本行内解析（加粗、斜体、代码、链接等）

@@ -1,9 +1,16 @@
+//! CSS 主题加载器 - 从 CSS 文件解析并应用 Markdown 编辑器主题
+//!
+//! 支持解析 vditor 风格的 CSS 主题文件，提取颜色、圆角、间距等样式属性，
+//! 映射到内部 Theme 结构体。支持 #hex、rgb()、rgba() 颜色格式。
+
 use std::collections::HashMap;
 use std::path::Path;
 
 use egui::Color32;
 use crate::theme::Theme;
 
+/// 从 CSS 文件加载主题
+/// 读取文件内容 → 解析 CSS 规则 → 应用到 Theme 结构体
 pub fn load_theme_from_css(path: &Path) -> Option<Theme> {
     let content = std::fs::read_to_string(path).ok()?;
     let rules = parse_css(&content);
@@ -11,23 +18,24 @@ pub fn load_theme_from_css(path: &Path) -> Option<Theme> {
     Some(theme)
 }
 
+/// 生成主题调试信息（中文化输出）
 pub fn debug_theme(theme: &Theme) -> String {
     format!(
-        "Theme loaded:\n\
-         base.background: {:?}\n\
-         base.text: {:?}\n\
-         font.line_height: {}\n\
-         heading.separator[0]: {:?}\n\
-         heading.separator[1]: {:?}\n\
-         code.inline_rounding: {}\n\
-         code.block_bg: {:?}\n\
-         code.block_text: {:?}\n\
-         code.block_padding: {}\n\
-         quote.bar_color: {:?}\n\
-         rule.color: {:?}\n\
-         link.color: {:?}\n\
-         table.header_text: {:?}\n\
-         table.cell_padding: {}",
+        "主题已加载:\n\
+         基础.背景色: {:?}\n\
+         基础.文字色: {:?}\n\
+         字体.行高: {}\n\
+         标题.分隔线[0]: {:?}\n\
+         标题.分隔线[1]: {:?}\n\
+         代码.行内圆角: {}\n\
+         代码.块背景: {:?}\n\
+         代码.块文字: {:?}\n\
+         代码.块内边距: {}\n\
+         引用.边条色: {:?}\n\
+         分割线.颜色: {:?}\n\
+         链接.颜色: {:?}\n\
+         表格.头部文字: {:?}\n\
+         表格.单元格内边距: {}",
         theme.base.background,
         theme.base.text,
         theme.font.line_height,
@@ -45,10 +53,12 @@ pub fn debug_theme(theme: &Theme) -> String {
     )
 }
 
+/// CSS 规则 - 存储选择器对应的属性键值对
 struct CssRule {
     properties: HashMap<String, String>,
 }
 
+/// 解析 CSS 文本为规则映射（选择器 → 属性集合）
 fn parse_css(content: &str) -> HashMap<String, CssRule> {
     let mut rules: HashMap<String, CssRule> = HashMap::new();
     let mut chars = content.chars().peekable();
@@ -62,6 +72,7 @@ fn parse_css(content: &str) -> HashMap<String, CssRule> {
         let body = read_until(&mut chars, '}');
         let selector = selector.trim().to_string();
         let properties = parse_properties(&body);
+        // 同一选择器的属性合并
         rules.entry(selector.clone())
             .and_modify(|r| r.properties.extend(properties.clone()))
             .or_insert(CssRule { properties });
@@ -69,6 +80,7 @@ fn parse_css(content: &str) -> HashMap<String, CssRule> {
     rules
 }
 
+/// 跳过空白字符和 /* */ 注释
 fn skip_whitespace_and_comments(chars: &mut std::iter::Peekable<std::str::Chars>) {
     loop {
         match chars.peek() {
@@ -77,6 +89,7 @@ fn skip_whitespace_and_comments(chars: &mut std::iter::Peekable<std::str::Chars>
                 let mut clone = chars.clone();
                 clone.next();
                 if clone.peek() == Some(&'*') {
+                    // 发现注释开始，跳过整个注释块
                     chars.next(); chars.next();
                     loop {
                         match chars.next() {
@@ -97,6 +110,7 @@ fn skip_whitespace_and_comments(chars: &mut std::iter::Peekable<std::str::Chars>
     }
 }
 
+/// 读取字符直到遇到指定结束符，返回已读取的内容
 fn read_until(chars: &mut std::iter::Peekable<std::str::Chars>, end: char) -> String {
     let mut result = String::new();
     while let Some(&c) = chars.peek() {
@@ -110,6 +124,8 @@ fn read_until(chars: &mut std::iter::Peekable<std::str::Chars>, end: char) -> St
     result
 }
 
+/// 解析 CSS 属性声明块为键值对
+/// 自动移除注释和 !important 标记
 fn parse_properties(body: &str) -> HashMap<String, String> {
     let mut props = HashMap::new();
     // 先去掉注释
@@ -129,6 +145,7 @@ fn parse_properties(body: &str) -> HashMap<String, String> {
     props
 }
 
+/// 移除 CSS 文本中的 /* */ 注释
 fn remove_comments(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
@@ -152,17 +169,21 @@ fn remove_comments(s: &str) -> String {
     result
 }
 
+/// 解析 CSS 颜色值为 egui Color32
+/// 支持 #hex(3/6/8位)、rgb()、rgba() 格式
 fn parse_color(val: &str) -> Option<Color32> {
     let val = val.trim();
     if val.starts_with('#') {
         let hex = &val[1..];
         match hex.len() {
+            // #RGB 简写格式
             3 => {
                 let r = u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?;
                 let g = u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?;
                 let b = u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()?;
                 Some(Color32::from_rgb(r, g, b))
             }
+            // #RRGGBB 标准格式
             6 => {
                 let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
                 let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
@@ -172,6 +193,7 @@ fn parse_color(val: &str) -> Option<Color32> {
             _ => None,
         }
     } else if val.starts_with("rgb(") {
+        // rgb(R, G, B) 格式
         let inner = val.strip_prefix("rgb(")?.strip_suffix(')')?;
         let parts: Vec<&str> = inner.split(',').collect();
         if parts.len() != 3 { return None; }
@@ -180,6 +202,7 @@ fn parse_color(val: &str) -> Option<Color32> {
         let b = parts[2].trim().parse::<u8>().ok()?;
         Some(Color32::from_rgb(r, g, b))
     } else if val.starts_with("rgba(") {
+        // rgba(R, G, B, A) 格式
         let inner = val.strip_prefix("rgba(")?.strip_suffix(')')?;
         let parts: Vec<&str> = inner.split(',').collect();
         if parts.len() != 4 { return None; }
@@ -193,8 +216,9 @@ fn parse_color(val: &str) -> Option<Color32> {
     }
 }
 
+/// 从 border 属性值中提取颜色
+/// 例如 "0.2rem solid #2995d9" → 提取 #2995d9
 fn parse_border_color(val: &str) -> Option<Color32> {
-    // "0.2rem solid #2995d9" → extract color
     for part in val.split_whitespace() {
         if let Some(c) = parse_color(part) {
             return Some(c);
@@ -203,6 +227,7 @@ fn parse_border_color(val: &str) -> Option<Color32> {
     None
 }
 
+/// 从 padding 属性值中提取第一个数值（px）
 fn parse_padding_first(val: &str) -> Option<f32> {
     val.split_whitespace()
         .next()?
@@ -211,6 +236,7 @@ fn parse_padding_first(val: &str) -> Option<f32> {
         .ok()
 }
 
+/// 从规则映射中获取指定选择器和属性名的值
 fn get_prop<'a>(
     rules: &'a HashMap<String, CssRule>,
     selector: &str,
@@ -219,6 +245,8 @@ fn get_prop<'a>(
     rules.get(selector)?.properties.get(prop)
 }
 
+/// 在规则映射中查找匹配的 CSS 规则
+/// 先尝试精确匹配选择器，再回退到包含查找（选最短的，最精确）
 fn find_rule<'a>(
     rules: &'a HashMap<String, CssRule>,
     needle: &str,
@@ -234,10 +262,12 @@ fn find_rule<'a>(
         .map(|(_, v)| v)
 }
 
+/// 将解析的 CSS 规则应用到 Theme 结构体
+/// 按照 vditor CSS 的选择器命名约定映射各样式属性
 fn apply_css_to_theme(rules: HashMap<String, CssRule>) -> Theme {
     let mut theme = Theme::light();
 
-    // .vditor-reset → base colors
+    // .vditor-reset → 基础颜色
     if let Some(rule) = find_rule(&rules, ".vditor-reset") {
         if let Some(c) = rule.properties.get("color").and_then(|v| parse_color(v)) {
             theme.base.text = c;
@@ -256,7 +286,7 @@ fn apply_css_to_theme(rules: HashMap<String, CssRule>) -> Theme {
         }
     }
 
-    // h1 border-bottom
+    // h1 下边框
     if let Some(rule) = find_rule(&rules, "h1") {
         if let Some(c) = rule.properties.get("border-bottom")
             .and_then(|v| parse_border_color(v))
@@ -265,7 +295,7 @@ fn apply_css_to_theme(rules: HashMap<String, CssRule>) -> Theme {
         }
     }
 
-    // h2 border-bottom
+    // h2 下边框
     if let Some(rule) = find_rule(&rules, "h2") {
         if let Some(c) = rule.properties.get("border-bottom")
             .and_then(|v| parse_border_color(v))
@@ -274,7 +304,7 @@ fn apply_css_to_theme(rules: HashMap<String, CssRule>) -> Theme {
         }
     }
 
-    // code (inline)
+    // code（行内代码）
     if let Some(rule) = find_rule(&rules, "reset code") {
         if let Some(v) = rule.properties.get("border-radius") {
             if let Some(r) = parse_padding_first(v) {
@@ -283,7 +313,7 @@ fn apply_css_to_theme(rules: HashMap<String, CssRule>) -> Theme {
         }
     }
 
-    // pre (code block)
+    // pre（代码块）
     if let Some(rule) = find_rule(&rules, "reset pre") {
         if let Some(c) = rule.properties.get("background-color")
             .and_then(|v| parse_color(v))
@@ -302,7 +332,7 @@ fn apply_css_to_theme(rules: HashMap<String, CssRule>) -> Theme {
         }
     }
 
-    // hr
+    // hr（水平分割线）
     if let Some(rule) = find_rule(&rules, "reset hr") {
         if let Some(c) = rule.properties.get("border-bottom")
             .and_then(|v| parse_border_color(v))
@@ -311,7 +341,7 @@ fn apply_css_to_theme(rules: HashMap<String, CssRule>) -> Theme {
         }
     }
 
-    // a (link)
+    // a（链接）
     if let Some(rule) = find_rule(&rules, "reset a") {
         if let Some(c) = rule.properties.get("color")
             .and_then(|v| parse_color(v))
@@ -320,7 +350,7 @@ fn apply_css_to_theme(rules: HashMap<String, CssRule>) -> Theme {
         }
     }
 
-    // table th
+    // table th（表头）
     if let Some(rule) = find_rule(&rules, "table th") {
         if let Some(c) = rule.properties.get("color")
             .and_then(|v| parse_color(v))
@@ -329,7 +359,7 @@ fn apply_css_to_theme(rules: HashMap<String, CssRule>) -> Theme {
         }
     }
 
-    // table td padding
+    // table td（表格单元格）内边距
     if let Some(rule) = find_rule(&rules, "table td") {
         if let Some(v) = rule.properties.get("padding") {
             if let Some(p) = parse_padding_first(v) {

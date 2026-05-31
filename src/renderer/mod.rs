@@ -1,3 +1,8 @@
+//! Markdown 渲染引擎模块
+//!
+//! 使用 pulldown-cmark 解析器将 Markdown 文本转换为结构化块列表，
+//! 再由 blocks.rs 渲染为 egui 界面元素。
+
 mod blocks;
 mod inline;
 
@@ -6,16 +11,25 @@ pub use blocks::render_block;
 
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 
+/// 渲染块 - pulldown-cmark 解析后的结构化块
 #[derive(Debug, Clone)]
 pub enum Block {
+    /// 标题 { 级别, 文本 }
     Heading { level: u8, text: String },
+    /// 段落 { 文本 }
     Paragraph { text: String },
+    /// 代码块 { 语言, 代码内容 }
     CodeBlock { lang: String, code: String },
+    /// 引用块 { 文本 }
     Quote { text: String },
+    /// 列表 { 是否有序, 列表项 }
     List { ordered: bool, items: Vec<String> },
+    /// 水平分割线
     Rule,
 }
 
+/// 使用 pulldown-cmark 解析 Markdown 文本为块列表
+/// 启用删除线、表格、任务列表扩展
 pub fn parse_blocks(content: &str) -> Vec<Block> {
     let opts = Options::ENABLE_STRIKETHROUGH
         | Options::ENABLE_TABLES

@@ -1,16 +1,30 @@
+//! 文件树组件模块 - 提供文件/目录浏览、右键菜单操作
+//!
+//! 核心组件：
+//! - `FileNode`: 文件树节点（文件或目录）
+//! - `FileTreeState`: 文件树状态管理
+//! - `render_file_tree`: 渲染文件树 UI
+
 use std::path::{Path, PathBuf};
 use eframe::egui;
 
+/// 文件树节点 - 表示一个文件或目录
 #[derive(Clone)]
 pub struct FileNode {
+    /// 文件/目录路径
     pub path: PathBuf,
+    /// 显示名称
     pub name: String,
+    /// 是否为目录
     pub is_dir: bool,
+    /// 子节点列表（仅目录有效）
     pub children: Vec<FileNode>,
+    /// 是否已展开（仅目录有效）
     pub expanded: bool,
 }
 
 impl FileNode {
+    /// 从目录路径创建文件树节点，递归加载子项
     pub fn from_dir(dir: &Path) -> Self {
         let name = dir.file_name()
             .map(|n| n.to_string_lossy().to_string())
@@ -26,6 +40,7 @@ impl FileNode {
         node
     }
 
+    /// 加载子节点 - 读取目录内容并按自然排序分组（目录在前，文件在后）
     fn load_children(&mut self) {
         if !self.is_dir { return; }
         let mut entries: Vec<std::fs::DirEntry> = Vec::new();
@@ -73,6 +88,7 @@ impl FileNode {
     }
 }
 
+/// 自然排序比较函数 - 数字按数值比较，非数字按字母比较
 fn natord_compare(a: &str, b: &str) -> std::cmp::Ordering {
     let mut ai = a.chars().peekable();
     let mut bi = b.chars().peekable();
@@ -107,15 +123,23 @@ fn natord_compare(a: &str, b: &str) -> std::cmp::Ordering {
     }
 }
 
+/// 扁平化列表项 - 用于渲染时的行数据
 pub struct FlatItem {
+    /// 缩进深度
     pub depth: usize,
+    /// 文件/目录路径
     pub path: PathBuf,
+    /// 显示名称
     pub name: String,
+    /// 是否为目录
     pub is_dir: bool,
+    /// 是否已展开
     pub expanded: bool,
+    /// 是否有子项
     pub has_children: bool,
 }
 
+/// 文件树状态 - 管理文件树的展开/折叠、选择、剪贴板等状态
 pub struct FileTreeState {
     pub root_nodes: Vec<FileNode>,
     pub selected_path: Option<PathBuf>,
@@ -217,6 +241,7 @@ fn flatten_node_into(node: &FileNode, depth: usize, flat: &mut Vec<FlatItem>) {
     }
 }
 
+/// 文件树操作类型 - 右键菜单操作的结果
 #[derive(Clone, PartialEq)]
 pub enum FileTreeAction {
     None,

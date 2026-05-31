@@ -1,86 +1,154 @@
+//! 主题样式定义模块
+//!
+//! 定义 Markdown 编辑器的完整主题系统，包括：
+//! - `Theme`: 笔记内容渲染主题（标题、代码、引用、表格等样式）
+//! - `UiTheme`: 应用 UI 主题（菜单栏、侧边栏、状态栏等）
+//! - `ExtraTheme`: 扩展主题（工具栏、大纲等额外样式）
+
 use egui::Color32;
 
+/// 笔记内容渲染主题
 pub struct Theme {
+    /// 主题名称（light/dark）
     pub name: &'static str,
+    /// 基础颜色
     pub base: BaseColors,
+    /// 标题样式
     pub heading: HeadingStyle,
+    /// 代码样式
     pub code: CodeStyle,
+    /// 引用样式
     pub quote: QuoteStyle,
+    /// 表格样式
     pub table: TableStyle,
+    /// 链接样式
     pub link: LinkStyle,
+    /// 列表样式
     pub list: ListStyle,
+    /// 分割线样式
     pub rule: RuleStyle,
+    /// 字体样式
     pub font: FontStyle,
 }
 
+/// 基础颜色方案
 pub struct BaseColors {
+    /// 背景色
     pub background: Color32,
+    /// 正文文字色
     pub text: Color32,
+    /// 次要文字色
     pub muted: Color32,
+    /// 边框色
     pub border: Color32,
+    /// 选中高亮色
     pub selection: Color32,
 }
 
+/// 标题样式（支持 H1-H6 不同层级）
 pub struct HeadingStyle {
+    /// 各级别标题字号 [H1, H2, H3, H4, H5, H6]
     pub sizes: [f32; 6],
+    /// 各级别标题颜色
     pub colors: [Color32; 6],
+    /// 各级别标题下分隔线颜色，None 表示无分隔线
     pub separator_colors: [Option<Color32>; 6],
+    /// 标题是否加粗
     pub bold: bool,
 }
 
+/// 代码样式（行内代码 + 代码块）
 pub struct CodeStyle {
+    /// 行内代码背景色
     pub inline_bg: Color32,
+    /// 行内代码文字色
     pub inline_text: Color32,
+    /// 行内代码圆角
     pub inline_rounding: f32,
+    /// 代码块背景色
     pub block_bg: Color32,
+    /// 代码块文字色
     pub block_text: Color32,
+    /// 代码块圆角
     pub block_rounding: f32,
+    /// 代码块内边距
     pub block_padding: f32,
+    /// 代码块边框色
     pub block_border_color: Color32,
+    /// 代码块风格（留空表示默认）
     pub block_style: String,
 }
 
+/// 引用块样式
 pub struct QuoteStyle {
+    /// 左侧竖条颜色
     pub bar_color: Color32,
+    /// 左侧竖条宽度
     pub bar_width: f32,
+    /// 引用文字颜色
     pub text_color: Color32,
+    /// 引用背景色
     pub bg_color: Color32,
+    /// 竖条与文字的间距
     pub padding: f32,
 }
 
+/// 表格样式
 pub struct TableStyle {
+    /// 表头背景色
     pub header_bg: Color32,
+    /// 表头文字色
     pub header_text: Color32,
+    /// 普通行背景色
     pub row_bg: Color32,
+    /// 奇偶交替行背景色
     pub alt_row_bg: Color32,
+    /// 边框颜色
     pub border_color: Color32,
+    /// 单元格内边距
     pub cell_padding: f32,
+    /// 边框圆角
     pub border_radius: f32,
 }
 
+/// 链接样式
 pub struct LinkStyle {
+    /// 链接颜色
     pub color: Color32,
+    /// 是否显示下划线
     pub underline: bool,
 }
 
+/// 列表样式
 pub struct ListStyle {
+    /// 列表标记符号颜色
     pub marker_color: Color32,
+    /// 列表项缩进量
     pub indent: f32,
+    /// 列表项间距
     pub spacing: f32,
 }
 
+/// 水平分割线样式
 pub struct RuleStyle {
+    /// 分割线颜色
     pub color: Color32,
+    /// 分割线粗细
     pub thickness: f32,
 }
 
+/// 字体样式
 pub struct FontStyle {
+    /// 基础字号
     pub base_size: f32,
+    /// 行高倍数
     pub line_height: f32,
+    /// 等宽字体字号
     pub monospace_size: f32,
 }
 
 impl Theme {
+    /// 创建浅色主题
     pub fn light() -> Self {
         let text = Color32::from_rgb(44, 62, 80);
         Self {
@@ -149,6 +217,7 @@ impl Theme {
             },
         }
     }
+    /// 创建深色主题
     pub fn dark() -> Self {
         let text = Color32::from_rgb(205, 214, 244);
         Self {
@@ -225,6 +294,9 @@ impl Default for Theme {
     }
 }
 
+/// 应用 UI 主题 - 控制编辑器框架各部分的颜色
+///
+/// 所有字段名对应 WhaleTerm preferences.json 中的配置键名。
 pub struct UiTheme {
     // === 应用基础 ===
     pub menu_bg: Color32,                  // appBgColor
@@ -290,6 +362,7 @@ pub struct UiTheme {
     pub table_even_row_bg: Color32,        // tableEvenRowBgColor
 }
 
+/// 扩展主题 - 工具栏、大纲、表格等额外样式
 pub struct ExtraTheme {
     // === 通用 ===
     pub tab_icon_color: Color32,

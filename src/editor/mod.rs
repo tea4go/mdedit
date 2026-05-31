@@ -1,26 +1,49 @@
+//! 编辑器模块 - Markdown 文本块分割与渲染
+//!
+//! 负责：
+//! - 将 Markdown 文本分割为语义块（标题、段落、代码块、引用、列表等）
+//! - 渲染富文本块（带样式的预览模式）
+//! - 行内格式解析（加粗、斜体、行内代码、链接）
+
 use egui;
 use crate::theme::Theme;
 
+/// 文本块 - 表示一个 Markdown 语义单元
 #[derive(Debug, Clone)]
 pub struct TextBlock {
+    /// 起始行号（0-based）
     pub start_line: usize,
+    /// 结束行号
     pub end_line: usize,
+    /// 原始 Markdown 文本
     pub source: String,
+    /// 块类型
     pub kind: BlockKind,
 }
 
+/// 块类型枚举 - Markdown 的各种语义块
 #[derive(Debug, Clone, PartialEq)]
 pub enum BlockKind {
+    /// 标题，参数为级别 (1-6)
     Heading(u8),
+    /// 普通段落
     Paragraph,
+    /// 代码块，参数为语言标识
     CodeBlock(String),
+    /// 引用块
     Quote,
+    /// 列表，参数为是否有序列表
     List(bool),
+    /// 表格
     Table,
+    /// 水平分割线
     Rule,
+    /// 空行
     Empty,
 }
 
+/// 将 Markdown 文本按语义分割为文本块列表
+/// 解析规则：标题→代码块→引用→列表→表格→分割线→段落→空行
 pub fn split_blocks(content: &str) -> Vec<TextBlock> {
     let lines: Vec<&str> = content.lines().collect();
     let mut blocks = Vec::new();
@@ -148,6 +171,7 @@ pub fn split_blocks(content: &str) -> Vec<TextBlock> {
     blocks
 }
 
+/// 判断是否为 Markdown 表格分隔行（如 |---|---|）
 fn is_table_separator(line: &str) -> bool {
     let trimmed = line.trim();
     if !trimmed.contains('|') {
@@ -156,6 +180,7 @@ fn is_table_separator(line: &str) -> bool {
     trimmed.chars().all(|c| c == '|' || c == '-' || c == ':' || c == ' ')
 }
 
+/// 渲染富文本块 - 根据块类型应用对应主题样式
 pub fn render_rich_block(ui: &mut egui::Ui, block: &TextBlock, theme: &Theme) {
     match &block.kind {
         BlockKind::Heading(level) => {
@@ -302,6 +327,7 @@ pub fn render_rich_block(ui: &mut egui::Ui, block: &TextBlock, theme: &Theme) {
     }
 }
 
+/// 行内格式渲染 - 解析加粗、斜体、行内代码、链接等行内 Markdown 语法
 fn render_inline(ui: &mut egui::Ui, text: &str, theme: &Theme) {
     let mut job = egui::text::LayoutJob::default();
     let mut chars = text.chars().peekable();

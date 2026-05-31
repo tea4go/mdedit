@@ -1,7 +1,11 @@
+//! 块级元素渲染 - 将解析后的 Block 渲染为 egui 界面元素
+
 use egui;
 use crate::theme::Theme;
 use super::Block;
 
+/// 渲染单个 Markdown 块级元素
+/// 根据块类型（标题、段落、代码块、引用、列表、分割线）应用对应样式
 pub fn render_block(ui: &mut egui::Ui, block: &Block, theme: &Theme) {
     match block {
         Block::Heading { level, text } => {
@@ -83,6 +87,7 @@ pub fn render_block(ui: &mut egui::Ui, block: &Block, theme: &Theme) {
     }
 }
 
+/// 渲染行内纯文本（简单版本，不含格式解析）
 fn render_inline_text(ui: &mut egui::Ui, text: &str, theme: &Theme) {
     ui.label(egui::RichText::new(text).color(theme.base.text));
 }

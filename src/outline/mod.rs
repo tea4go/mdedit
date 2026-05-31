@@ -1,9 +1,22 @@
+//! 大纲导航模块 - 从 Markdown 文档中提取标题大纲并管理导航状态
+//!
+//! 提供：
+//! - 标题提取（跳过代码块内的标题）
+//! - 大纲可见性控制（按级别展开/折叠）
+//! - 编号生成（支持 1. / 1 / 1、 三种格式）
+
+/// 大纲项 - 表示一个文档标题
 pub struct OutlineItem {
+    /// 标题级别 (1-6)
     pub level: u8,
+    /// 标题文本
     pub title: String,
+    /// 标题所在行号（0-based）
     pub line: usize,
 }
 
+/// 从 Markdown 内容中提取大纲项列表
+/// 自动跳过代码块内的 # 开头行（避免误识别为标题）
 pub fn extract_outline(content: &str) -> Vec<OutlineItem> {
     let mut items = Vec::new();
     let mut in_code_block = false;
@@ -33,20 +46,26 @@ pub fn extract_outline(content: &str) -> Vec<OutlineItem> {
     items
 }
 
+/// 编号格式枚举
 #[derive(Clone, Copy, PartialEq)]
 pub enum NumberFormat {
-    Dot,    // 1. / 1.1.
-    None,   // 1 / 1.1
-    Comma,  // 1、 / 1.1、
+    Dot,    // 1. / 1.1. - 带点号
+    None,   // 1 / 1.1  - 无点号
+    Comma,  // 1、 / 1.1、 - 中文顿号
 }
 
+/// 大纲导航状态
 pub struct OutlineState {
+    /// 展开到的最大级别（1-6）
     pub expand_level: u8,
+    /// 是否显示编号
     pub show_numbers: bool,
+    /// 编号格式
     pub number_format: NumberFormat,
 }
 
 impl OutlineState {
+    /// 创建默认大纲状态（展开到6级，不显示编号）
     pub fn new() -> Self {
         Self {
             expand_level: 6,
@@ -55,6 +74,9 @@ impl OutlineState {
         }
     }
 
+    /// 判断指定索引的大纲项是否应该可见
+    /// 规则：级别 <= expand_level 的项始终可见；
+    /// 更深层级的项如果其祖先已展开，也可见
     pub fn is_visible(&self, items: &[OutlineItem], index: usize) -> bool {
         let item_level = items[index].level;
         if item_level <= self.expand_level {
@@ -74,6 +96,7 @@ impl OutlineState {
         false
     }
 
+    /// 生成大纲编号字符串（如 "1.2.3."）
     pub fn generate_number(&self, items: &[OutlineItem], index: usize) -> String {
         if !self.show_numbers { return String::new(); }
         let mut counters = [0u32; 6];

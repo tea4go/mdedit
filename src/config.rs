@@ -1,12 +1,20 @@
+//! 配置管理模块 - 处理应用配置的加载与保存
+//!
+//! 配置文件为 INI 格式，存储在 %APPDATA%/mdedit/config.ini 中。
+//! 包含窗口位置、大小、主题、编辑模式等设置。
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+/// 获取配置文件路径
 fn config_path() -> PathBuf {
     let mut path = config_dir();
     path.push("config.ini");
     path
 }
 
+/// 获取配置文件目录（%APPDATA%/mdedit）
+/// 如果 APPDATA 环境变量不存在，回退到当前目录
 pub fn config_dir() -> PathBuf {
     if let Some(appdata) = std::env::var_os("APPDATA") {
         let mut p = PathBuf::from(appdata);
@@ -17,18 +25,27 @@ pub fn config_dir() -> PathBuf {
     }
 }
 
+/// 应用配置结构体
 #[derive(Default)]
 pub struct AppConfig {
+    /// 窗口 X 坐标（物理像素）
     pub window_x: Option<f32>,
+    /// 窗口 Y 坐标（物理像素）
     pub window_y: Option<f32>,
+    /// 窗口宽度
     pub window_width: Option<f32>,
+    /// 窗口高度
     pub window_height: Option<f32>,
+    /// 是否最大化
     pub maximized: bool,
+    /// 主题名称（light/dark/auto）
     pub theme: String,
+    /// 编辑模式（raw/preview）
     pub edit_mode: String,
 }
 
 impl AppConfig {
+    /// 从配置文件加载配置，文件不存在时返回默认值
     pub fn load() -> Self {
         let path = config_path();
         let content = match std::fs::read_to_string(&path) {
@@ -47,6 +64,7 @@ impl AppConfig {
         }
     }
 
+    /// 将当前配置保存到配置文件
     pub fn save(&self) {
         let dir = config_dir();
         let _ = std::fs::create_dir_all(&dir);
@@ -76,10 +94,13 @@ impl AppConfig {
     }
 }
 
+/// 解析 INI 格式文本为键值对 HashMap
+/// 支持以 # 开头的注释行和空行
 fn parse_ini(content: &str) -> HashMap<String, String> {
     let mut map = HashMap::new();
     for line in content.lines() {
         let line = line.trim();
+        // 跳过空行和注释
         if line.is_empty() || line.starts_with('#') {
             continue;
         }

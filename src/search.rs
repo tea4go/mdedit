@@ -1,20 +1,35 @@
+//! 搜索功能模块 - 提供编辑器内搜索栏和全文搜索两种搜索能力
+//!
+//! - `SearchBarState` / `render_search_bar`: 编辑器内浮动搜索栏（查找/替换）
+//! - `SearchTreeState` / `render_search_tree`: 全文搜索面板（跨文件搜索）
+
 use std::path::PathBuf;
 use eframe::egui;
 
 // === 编辑器内搜索栏 (SearchBar) ===
 
+/// 搜索栏状态 - 管理搜索栏的 UI 状态和匹配结果
 pub struct SearchBarState {
+    /// 是否可见
     pub visible: bool,
+    /// 搜索关键词
     pub query: String,
+    /// 替换文本
     pub replace_text: String,
+    /// 是否区分大小写
     pub case_sensitive: bool,
+    /// 是否全词匹配
     pub whole_word: bool,
+    /// 是否显示替换行
     pub show_replace: bool,
+    /// 当前匹配项索引（0-based）
     pub current_match: usize,
+    /// 总匹配数
     pub total_matches: usize,
 }
 
 impl SearchBarState {
+    /// 创建默认搜索栏状态
     pub fn new() -> Self {
         Self {
             visible: false,
@@ -28,6 +43,7 @@ impl SearchBarState {
         }
     }
 
+    /// 统计当前内容中的匹配数量
     pub fn count_matches(&mut self, content: &str) {
         if self.query.is_empty() {
             self.total_matches = 0;
@@ -41,12 +57,14 @@ impl SearchBarState {
         }
     }
 
+    /// 返回所有匹配的位置列表 (start, end)
     pub fn matches(&self, content: &str) -> Vec<(usize, usize)> {
         if self.query.is_empty() { return Vec::new(); }
         find_matches(content, &self.query, self.case_sensitive, self.whole_word)
     }
 }
 
+/// 在文本中查找所有匹配位置，支持大小写和全词匹配选项
 fn find_matches(content: &str, query: &str, case_sensitive: bool, whole_word: bool) -> Vec<(usize, usize)> {
     let pattern = if whole_word {
         format!(r"\b{}\b", regex::escape(query))
@@ -62,6 +80,8 @@ fn find_matches(content: &str, query: &str, case_sensitive: bool, whole_word: bo
     re.find_iter(content).map(|m| (m.start(), m.end())).collect()
 }
 
+/// 渲染编辑器浮动搜索栏
+/// 返回搜索操作类型（查询变更、上/下一个、替换等）
 pub fn render_search_bar(
     ctx: &egui::Context,
     state: &mut SearchBarState,
@@ -159,42 +179,58 @@ pub fn render_search_bar(
     action
 }
 
+/// 搜索栏操作类型
 #[derive(Clone, PartialEq)]
 pub enum SearchBarAction {
     None,
-    QueryChanged,
-    PrevMatch,
-    NextMatch,
-    Replace,
-    ReplaceAll,
+    QueryChanged,   // 搜索词变更
+    PrevMatch,      // 上一个匹配
+    NextMatch,      // 下一个匹配
+    Replace,        // 替换当前
+    ReplaceAll,     // 全部替换
 }
 
 // === 全文搜索 (SearchTree) ===
 
+/// 文件搜索结果 - 一个文件中的所有匹配行
 pub struct FileSearchResult {
+    /// 文件路径
     pub file_path: PathBuf,
+    /// 文件名
     pub file_name: String,
+    /// 匹配的行列表
     pub lines: Vec<LineMatch>,
 }
 
+/// 行级匹配结果
 pub struct LineMatch {
+    /// 行号（0-based）
     pub line_number: usize,
+    /// 行文本内容
     pub line_text: String,
+    /// 匹配起始位置
     pub match_start: usize,
+    /// 匹配结束位置
     pub match_end: usize,
 }
 
+/// 全文搜索状态
 pub struct SearchTreeState {
+    /// 搜索关键词
     pub query: String,
+    /// 搜索结果列表
     pub results: Vec<FileSearchResult>,
+    /// 是否正在搜索
     pub searching: bool,
 }
 
 impl SearchTreeState {
+    /// 创建空的搜索状态
     pub fn new() -> Self {
         Self { query: String::new(), results: Vec::new(), searching: false }
     }
 
+    /// 执行全文搜索，在指定目录下递归搜索所有 .md 文件
     pub fn search(&mut self, query: &str, dir: &std::path::Path) {
         self.query = query.to_string();
         self.results.clear();
@@ -205,6 +241,7 @@ impl SearchTreeState {
     }
 }
 
+/// 递归搜索目录下的 Markdown 文件
 fn search_dir(dir: &std::path::Path, query: &str, results: &mut Vec<FileSearchResult>) {
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
@@ -230,6 +267,7 @@ fn search_dir(dir: &std::path::Path, query: &str, results: &mut Vec<FileSearchRe
     }
 }
 
+/// 在单个文件中查找匹配的行
 fn find_line_matches(content: &str, query: &str) -> Vec<LineMatch> {
     let pattern = regex::escape(query);
     let re = regex::RegexBuilder::new(&pattern)
@@ -250,10 +288,14 @@ fn find_line_matches(content: &str, query: &str) -> Vec<LineMatch> {
     matches
 }
 
+/// 全文搜索结果 - 用户点击匹配行时返回打开文件和行号
 pub struct SearchTreeResult {
+    /// 打开的文件路径和目标行号
     pub open_file: Option<(PathBuf, usize)>,
 }
 
+/// 渲染全文搜索面板
+/// 包括搜索输入框、搜索结果列表（文件名+匹配行）
 pub fn render_search_tree(
     ui: &mut egui::Ui,
     state: &mut SearchTreeState,

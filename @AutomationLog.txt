@@ -1,1 +1,0 @@
-2026-05-30 19:51:21.916 <string>[4] <module> -> Find Control Timeout(10s): {Name: 'whaleterm', ControlType: WindowControl}
